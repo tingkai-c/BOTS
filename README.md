@@ -2,6 +2,8 @@
 
 Public app: **https://haggleface.vercel.app**. The Vercel project is `haggleface`, with Clerk authentication, Claude Sonnet 5, and Convex production deployment `cheery-bison-90`.
 
+**Testing a branch?** Open [its pull request](https://github.com/tingkai-c/BOTS/pulls) and click **Open Haggleface preview ↗** in the **🔎 Haggleface preview** bot comment. The preview URL is also copyable there. See [the team workflow](docs/TEAM_WORKFLOW.md#where-is-my-preview-link).
+
 **A better find.** A working AI secondhand-shopping demo: cross-marketplace search, live browser visibility, progressive listings, transparent deal ranking, image input, and an approval-first negotiation flow.
 
 ## Run
