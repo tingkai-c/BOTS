@@ -20,7 +20,8 @@ jobs:
     # contributor code, and uses no Vercel, Clerk, Convex, or marketplace keys.
     if: >-
       (github.event_name == 'deployment_status' &&
-       github.event.deployment.environment == 'Preview – haggleface' &&
+       (github.event.deployment.environment == 'Preview – haggleface' ||
+        github.event.deployment.environment == 'Preview') &&
        github.event.deployment.creator.login == 'vercel[bot]') ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository)
@@ -33,7 +34,9 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const marker = '<!-- haggleface-preview-link -->';
-            const environment = 'Preview – haggleface';
+            // Vercel uses plain Preview for one connected project and adds a
+            // project suffix when multiple projects share a repository.
+            const environments = new Set(['Preview', 'Preview – haggleface']);
             const sha = context.payload.pull_request?.head.sha || context.payload.deployment.sha;
             const candidates = context.payload.pull_request
               ? [context.payload.pull_request]
@@ -59,9 +62,9 @@ jobs:
             const attempts = context.eventName === 'pull_request' ? 10 : 1;
             for (let attempt = 0; attempt < attempts; attempt++) {
               const { data: deployments } = await github.rest.repos.listDeployments({
-                owner, repo, sha, environment, per_page: 10,
+                owner, repo, sha, per_page: 30,
               });
-              const deployment = deployments.find(d => d.creator?.login === 'vercel[bot]');
+              const deployment = deployments.find(d => environments.has(d.environment) && d.creator?.login === 'vercel[bot]');
               if (deployment) {
                 const { data: statuses } = await github.rest.repos.listDeploymentStatuses({
                   owner, repo, deployment_id: deployment.id, per_page: 1,
