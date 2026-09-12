@@ -1,0 +1,9 @@
+.env
+.env.*
+.clerk
+.git
+.gstack
+test-results
+playwright-report
+tests
+*.tsbuildinfo
