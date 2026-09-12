@@ -11,7 +11,7 @@ pnpm install
 pnpm dev
 ```
 
-The server binds to `0.0.0.0`. Open the port printed in the terminal using your server's LAN or Tailscale address. **The current development instance is at http://100.121.141.15:3003.** That tailnet address is allowlisted in `next.config.ts` so Next.js development assets and hot reload work remotely. Add your own hostname there when running on another machine.
+The server binds to `0.0.0.0`. Open the port printed in the terminal using your server's LAN or Tailscale address. **A verified production build is currently running at http://100.121.141.15:3003.** That tailnet address is also allowlisted in `next.config.ts` so Next.js development assets and hot reload work remotely. Add your own hostname there when running on another machine. To start the production build yourself, run `pnpm build` followed by `pnpm start --port 3003`.
 
 No environment variables are needed for the complete demo. Click the Sony example to see two concurrent simulated browsers, incremental results, and live ranking. Open a listing, inspect it, draft an offer, edit the message, and approve it. No real seller is contacted in demo mode.
 
@@ -22,8 +22,8 @@ Copy `.env.example` to `.env.local` and fill in:
 | Variable | Purpose |
 | --- | --- |
 | `STEEL_API_KEY` | Real cloud browser sessions. Its presence switches marketplace execution to live mode. |
-| `OPENAI_API_KEY` | Multimodal product identification, typed comparison tools, streamed recommendations and offer drafting. |
-| `AI_MODEL` | Optional OpenAI model; defaults to `gpt-4.1-mini`. Must support images, tools, and structured outputs. |
+| `ANTHROPIC_API_KEY` | Claude multimodal product identification, typed comparison tools, streamed recommendations and offer drafting. |
+| `AI_MODEL` | Optional Anthropic model; defaults to `claude-sonnet-5`. Must support images, tools, and structured outputs. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk frontend authentication. |
 | `CLERK_SECRET_KEY` | Clerk server authentication. |
 | `CONVEX_DEPLOYMENT` | Deployment selected by `pnpm convex:dev`. |
@@ -45,12 +45,14 @@ Use HTTPS for Clerk and live interactive browser use on deployed domains. For an
 
 **Real integration paths implemented:** Steel SDK `sessions.create`, Playwright CDP connections, embedded `debugUrl` live view, interactive login, persistent `profileId` / `persistProfile`, cleanup, independent Facebook/eBay DOM extraction, listing inspection, approved messaging, Clerk auth, Convex persistence/subscriptions, and AI SDK 7 structured and streamed calls.
 
-**Not live-verified here:** authenticated marketplace scraping/sending, Steel profile reuse, deployed Convex functions, and model responses. These need your external keys and marketplace account sessions. Marketplace DOMs and account challenges vary; failures appear as actionable per-marketplace states, and a failed source does not erase results from the other source. A messaging failure is recorded as unconfirmed rather than automatically retried, preventing accidental duplicate offers.
+**Claude verified:** a real `claude-sonnet-5` API call returned schema-validated structured product data. The provider reads `ANTHROPIC_API_KEY`; for existing installations, a Claude-format key in the old `OPENAI_API_KEY` field is also recognized. An actual OpenAI key is never sent to Anthropic. `.env.local` takes precedence over `.env` for model selection.
+
+**Not live-verified here:** authenticated marketplace scraping/sending, Steel profile reuse, and deployed Convex functions. These need your external keys and marketplace account sessions. Marketplace DOMs and account challenges vary; failures appear as actionable per-marketplace states, and a failed source does not erase results from the other source. A messaging failure is recorded as unconfirmed rather than automatically retried, preventing accidental duplicate offers.
 
 ### Deliberate demo behavior
 
 - Without Steel, marketplace data, browser activity, accounts, inspection, and sending are explicitly simulated.
-- Without OpenAI, image identification uses a labeled **sample product**, not actual visual recognition. Text searches select appropriate fixture scenarios; arbitrary product names generate illustrative sample listings.
+- Without an Anthropic key, demo image identification uses a labeled **sample product**, not actual visual recognition. Text searches select appropriate fixture scenarios; arbitrary product names generate illustrative sample listings.
 - Demo state is stored in the current tab's `sessionStorage`, not Convex. Live state is persisted to Convex before execution and after each listing/event. Images are sent to identification but are not retained in stored search state.
 - Saved hearts are local to the current app instance. Search results survive reload in the same tab.
 - Demo images are representative product photography, not scraped seller photos. Demo “Browse marketplace” links open marketplace search/home pages, never fabricated seller listings.
@@ -112,4 +114,4 @@ Deploy this repository as a Next.js project using pnpm. Set the environment vari
 
 ## Image credits
 
-Representative headphones and camera photographs: [Unsplash headphones](https://unsplash.com/photos/1546435770-a3e426bf472b), [Unsplash camera](https://unsplash.com/photos/1516035069371-29a1b244cc32), downloaded from the corresponding `images.unsplash.com` photo IDs. Aeron photograph: Brooklyn Museum, [Wikimedia Commons source and license](https://commons.wikimedia.org/wiki/File:Aeron_chair_Brooklyn_Museum.jpg). Demo photography is illustrative, not a claim about a particular seller's product.
+Representative headphones and camera photographs: [Unsplash headphones source](https://images.unsplash.com/photo-1546435770-a3e426bf472b), [Unsplash camera source](https://images.unsplash.com/photo-1516035069371-29a1b244cc32). Aeron photograph: Brooklyn Museum, [Wikimedia Commons source and license](https://commons.wikimedia.org/wiki/File:Aeron_chair_Brooklyn_Museum.jpg). Demo photography is illustrative, not a claim about a particular seller's product.
