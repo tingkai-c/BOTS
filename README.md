@@ -1,4 +1,4 @@
-# Scout
+# HaggleFace
 
 **A better find.** A working AI secondhand-shopping demo: cross-marketplace search, live browser visibility, progressive listings, transparent deal ranking, image input, and an approval-first negotiation flow.
 
