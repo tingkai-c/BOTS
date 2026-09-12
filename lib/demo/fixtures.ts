@@ -1,8 +1,8 @@
 import type { Identification, Listing, SearchInput } from '@/lib/schemas';
 const photos={headphones:'photo-1546435770-a3e426bf472b',airpods:'photo-1625245488600-fbd7e4c1d2ef',chair:'photo-1592789705501-f9ae4278a2c9',camera:'photo-1516035069371-29a1b244cc32',bike:'photo-1485965120184-e220f721d03e'};
-export const photo=(id:string)=>`https://images.unsplash.com/${id}?auto=format&fit=crop&w=700&q=85`;
+export const photo=(id:string)=>id===photos.chair?'/chair.jpg':id===photos.camera?'/camera.jpg':id===photos.headphones||id===photos.airpods?'/headphones.jpg':`https://images.unsplash.com/${id}?auto=format&fit=crop&w=700&q=85`;
 export function demoIdentify(query:string):Identification {
- const q=query.toLowerCase();const productName=/airpod/.test(q)?'Apple AirPods Max':/aeron|chair|miller/.test(q)?'Herman Miller Aeron':/camera|fuji|sony a/.test(q)?'Fujifilm X100V':/bike|bicycle/.test(q)?'Trek FX 3':'Sony WH-1000XM5';
+ const q=query.toLowerCase();const productName=/airpod/.test(q)?'Apple AirPods Max':/aeron|chair|miller/.test(q)?'Herman Miller Aeron':/camera|fuji|sony a/.test(q)?'Fujifilm X100V':/bike|bicycle/.test(q)?'Trek FX 3':/sony|headphone|xm5/.test(q)||!q?'Sony WH-1000XM5':query.replace(/^(find me|find|search for)\s+/i,'').replace(/under\s*\$?\d+|near me/ig,'').trim();
  return {productName,brand:productName.split(' ')[0],model:productName.split(' ').slice(1).join(' '),category:/chair|aeron/i.test(productName)?'Office chair':/fuji/i.test(productName)?'Camera':'Electronics',color:'Black',attributes:['Secondhand','Demo identification — not an analysis of your photo'],confidence:.76,searchQueries:[productName,`${productName} used`]};
 }
 export function demoListings(id:string,input:SearchInput,identification:Identification):Listing[]{
