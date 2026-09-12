@@ -5,7 +5,6 @@ const config: NextConfig = {
   // dependency tracer cannot infer these paths through pnpm's symlink layout.
   outputFileTracingIncludes: {
     '/api/**': [
-      './node_modules/playwright-core/**/*',
       './node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/**/*',
     ],
   },

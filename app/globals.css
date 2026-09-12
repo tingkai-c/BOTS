@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import '@clerk/ui/themes/shadcn.css';
+.cl-rootBox{--muted:#eef3e9}.cl-cardBox{background:#fafaf8}.cl-footer{background:#f0f3e9}.cl-footerActionText{color:#708265}
 @theme inline {--color-background:var(--background);--color-foreground:var(--foreground);--color-primary:var(--primary);--color-primary-foreground:var(--primary-foreground);--color-muted:var(--muted);--color-muted-foreground:var(--muted-foreground);--color-border:var(--border);--color-input:var(--input);--color-ring:var(--ring)}
 :root{--background:#fafaf8;--foreground:#252d28;--primary:#315c40;--primary-foreground:#fff;--muted-foreground:#78866e;--border:#e5e8e1;--input:#e5e8e1;--ring:#80a388;--card:#fff;--card-foreground:#252d28;--popover:#fff;--popover-foreground:#252d28;--secondary:#eef3e9;--secondary-foreground:#315c40;--accent:#eef3e9;--accent-foreground:#315c40;--destructive:#b34c38}
 .auth-controls{display:flex;align-items:center;gap:5px}.auth-loading{width:70px;height:30px;background:#eef1e8;border-radius:5px}.auth-page{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 18px;gap:26px}.auth-page>.brand{font-size:30px}.auth-page-note{font-size:11px;color:#839077;text-align:center;max-width:320px;line-height:1.8}
