@@ -1,0 +1,6 @@
+import { listingSchema } from '@/lib/schemas';
+import { apiError,connection,userId } from '@/lib/server/context';
+import { createSession,connectBrowser,releaseSession,viewerUrl } from '@/lib/steel/sessions';
+import { inspectListing } from '@/lib/marketplaces/shared';
+export const maxDuration=60;
+export async function POST(req:Request){try{const user=await userId();const listing=listingSchema.parse(await req.json());if(listing.demo)return Response.json({demo:true,title:listing.title,description:listing.description});const encoder=new TextEncoder();return new Response(new ReadableStream({async start(c){let id:string|undefined;const emit=(v:unknown)=>c.enqueue(encoder.encode(JSON.stringify(v)+'\n'));try{const profile=await connection(user,listing.marketplace);const session=await createSession(profile?.profileId);id=session.id;emit({debugUrl:viewerUrl(session.debugUrl)});const {browser,page}=await connectBrowser(session.id);try{emit(await inspectListing(page,listing));}finally{await browser.close().catch(()=>{});}}catch(e){emit({error:e instanceof Error?e.message:'Could not inspect this listing.'});}finally{if(id)await releaseSession(id).catch(()=>{});c.close();}}}),{headers:{'Content-Type':'application/x-ndjson'}});}catch(e){return apiError(e);}}
