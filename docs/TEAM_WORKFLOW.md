@@ -6,6 +6,18 @@ GitHub collaborators work in `tingkai-c/BOTS`. The Vercel Hobby project remains 
 
 ## Branches and automatic previews
 
+### Where is my preview link?
+
+1. Open your pull request from [the PR list](https://github.com/tingkai-c/BOTS/pulls).
+2. Find the **🔎 Haggleface preview** bot comment in the Conversation tab.
+3. Click the large **Open Haggleface preview ↗** link, or copy the URL below it into team chat.
+
+The same comment updates after each deployment. While building, it shows a status link; if a build fails, it points to the checks. You can also open the **Preview link** GitHub Actions run to find the URL in its summary. Vercel's existing deployment check/comment remains available as a fallback.
+
+No separate deployment command is required. The comment automation applies after the workflow is merged into `main`; same-repository PRs can also run it directly from their branch.
+
+### Create a branch
+
 ```bash
 git fetch origin
 git switch -c feat/my-change origin/main
@@ -18,7 +30,7 @@ git push -u origin feat/my-change
 Open a pull request targeting `main`. Vercel's Git integration is configured to deploy every branch push:
 
 - `main` updates **https://haggleface.vercel.app** after a successful build.
-- Every other branch gets a Preview URL. Find it in the PR's Vercel check/comment or in Vercel's deployment list.
+- Every other branch gets a Preview URL. Find the **Haggleface preview** comment on its PR, or use the Vercel check/deployment list.
 - New pushes update that branch's preview. Teammates open the URL and sign into Haggleface through Clerk.
 - The GitHub **Checks** workflow runs unit tests, typecheck, lint, and build without secrets. Get a teammate's review and passing checks before merging. This is the team convention; enforced branch protection is separate.
 

@@ -1,0 +1,112 @@
+name: Preview link
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  deployment_status:
+
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: write
+
+concurrency:
+  group: preview-link-${{ github.event.pull_request.head.sha || github.event.deployment.sha }}
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    # Fork builds require owner approval. This job never checks out or executes
+    # contributor code, and uses no Vercel, Clerk, Convex, or marketplace keys.
+    if: >-
+      (github.event_name == 'deployment_status' &&
+       github.event.deployment.environment == 'Preview – haggleface' &&
+       github.event.deployment.creator.login == 'vercel[bot]') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Post or update the preview link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const marker = '<!-- haggleface-preview-link -->';
+            const environment = 'Preview – haggleface';
+            const sha = context.payload.pull_request?.head.sha || context.payload.deployment.sha;
+            const candidates = context.payload.pull_request
+              ? [context.payload.pull_request]
+              : await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+                  owner, repo, commit_sha: sha, per_page: 100,
+                });
+            const prs = candidates.filter(pr => pr.state === 'open' && pr.head.sha === sha);
+            if (!prs.length) return;
+
+            function previewUrl(value) {
+              try {
+                const url = new URL(value);
+                if (url.protocol !== 'https:' || url.username || url.password) return null;
+                if (!url.hostname.startsWith('haggleface-') || !url.hostname.endsWith('.vercel.app')) return null;
+                // Deployment URLs should not need auth tokens or arbitrary query parameters.
+                return url.origin;
+              } catch { return null; }
+            }
+
+            let status;
+            // PRs can open before Vercel registers the deployment. Briefly wait on
+            // first publication; deployment_status handles later build changes.
+            const attempts = context.eventName === 'pull_request' ? 10 : 1;
+            for (let attempt = 0; attempt < attempts; attempt++) {
+              const { data: deployments } = await github.rest.repos.listDeployments({
+                owner, repo, sha, environment, per_page: 10,
+              });
+              const deployment = deployments.find(d => d.creator?.login === 'vercel[bot]');
+              if (deployment) {
+                const { data: statuses } = await github.rest.repos.listDeploymentStatuses({
+                  owner, repo, deployment_id: deployment.id, per_page: 1,
+                });
+                status = statuses[0];
+              }
+              if (['success', 'failure', 'error'].includes(status?.state)) break;
+              if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+
+            const url = previewUrl(status?.environment_url || status?.target_url);
+            const checks = `https://github.com/${owner}/${repo}/commit/${sha}/checks`;
+            const ready = status?.state === 'success' && url;
+            const failed = ['failure', 'error'].includes(status?.state);
+            const body = [
+              marker,
+              '## 🔎 Haggleface preview',
+              '',
+              ready ? `### [Open Haggleface preview ↗](${url})` : failed ? '### Build failed' : '### Preview is building…',
+              '',
+              ready ? `**Copy/share:** ${url}` : `[View build status and logs](${checks})`,
+              '',
+              `**Commit:** \`${sha.slice(0, 7)}\` · **Environment:** Test`,
+              '',
+              'No Vercel account or tailnet access needed. Sign into Haggleface with Clerk to test app actions.',
+              '',
+              'Uses the shared **test database**, not production. Live browser searches still use shared Steel/Claude credits.',
+              '',
+              'This comment updates with the latest deployment. Please test before merging.',
+            ].join('\n');
+
+            for (const candidate of prs) {
+              // Avoid posting an older build over a newer push.
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: candidate.number });
+              if (pr.state !== 'open' || pr.head.sha !== sha) continue;
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner, repo, issue_number: pr.number, per_page: 100,
+              });
+              const existing = comments.find(c => c.user?.login === 'github-actions[bot]' && c.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+              }
+            }
+            await core.summary.addHeading('Haggleface preview')
+              .addLink(ready ? 'Open preview' : 'View deployment checks', ready ? url : checks)
+              .write();
