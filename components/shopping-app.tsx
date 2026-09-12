@@ -47,6 +47,7 @@ import { ListingCard, MarketplaceBadge, DealScore, money } from "./listings";
 import { NegotiationPanel } from "./negotiation-panel";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
+import { useShoppingAuth } from './providers';
 function AuthControl() {
   const { isSignedIn, isLoaded } = useUser();
   const clerk = useClerk();
@@ -122,6 +123,7 @@ export function ShoppingApp({
   demo: boolean;
   initialId?: string;
 }) {
+  const account = useShoppingAuth();
   const [query, setQuery] = useState("");
   const [image, setImage] = useState<string>();
   const [imageName, setImageName] = useState("");
@@ -272,6 +274,11 @@ export function ShoppingApp({
   async function search(text = query) {
     if (busy || (!text.trim() && !image)) return;
     setQuery(text);
+    if (account.required && !account.signedIn) {
+      setError(account.loaded ? 'Sign in to use your shopping agent.' : 'Your account is loading. Please try again in a moment.');
+      if (account.loaded) account.openSignIn();
+      return;
+    }
     setBusy(true);
     setError("");
     setSavedOnly(false);
@@ -414,7 +421,7 @@ export function ShoppingApp({
             <Search size={21} />
             <i />
           </span>
-          scout<span className="brand-dot">.</span>
+          haggleface<span className="brand-dot">.</span>
         </a>
         <div className="nav-divider" />
         <span className="nav-tagline">A better find.</span>
@@ -718,7 +725,7 @@ export function ShoppingApp({
                   </span>
                   <div>
                     <strong>Have a picture, not a product name?</strong>
-                    <p>Drop a photo. Scout will figure out the rest.</p>
+                    <p>Drop a photo. Haggleface will figure out the rest.</p>
                   </div>
                   <ArrowUpRight size={18} />
                 </button>
@@ -738,7 +745,7 @@ export function ShoppingApp({
                     </div>
                     <div>
                       <span>02</span>
-                      <h4>Scout explores.</h4>
+                      <h4>Haggleface explores.</h4>
                       <p>
                         Real browsers search
                         <br />
@@ -921,7 +928,7 @@ export function ShoppingApp({
         </div>
       </main>
       <footer className="page-footer">
-        <span className="footer-brand">scout.</span>
+        <span className="footer-brand">haggleface.</span>
         <span>Find more. Spend less. Buy secondhand.</span>
         <span>
           <Zap size={11} /> A little AI. A lot of possibility.
@@ -1023,7 +1030,7 @@ export function ShoppingApp({
           else setConnectionOpen(v);
         }}
         title="Connect your marketplaces"
-        description="Sign in directly in a secure Steel browser. Scout never sees or stores your password."
+        description="Sign in directly in a secure Steel browser. Haggleface never sees or stores your password."
       >
         <div className="connection-panel">
           <div className="tone-options">
@@ -1090,7 +1097,7 @@ export function ShoppingApp({
         open={profileOpen}
         onOpenChange={setProfileOpen}
         title="Your demo workspace"
-        description="Explore Scout without creating an account."
+        description="Explore Haggleface without creating an account."
       >
         <div className="profile-panel">
           <span className="avatar">J</span>

@@ -83,7 +83,7 @@ export function NegotiationPanel({ listing }: { listing: RankedListing }) {
         <label>Your opening offer<div className="money-input"><span>$</span><input aria-label="Your opening offer" type="number" min="1" max={max} value={desired} disabled={status !== 'idle'} onChange={e => setDesired(Number(e.target.value))} /></div></label>
         <label>Your walk-away price<div className="money-input"><span>$</span><input aria-label="Your walk-away price" type="number" min={desired} value={max} disabled={status !== 'idle'} onChange={e => setMax(Number(e.target.value))} /></div></label>
       </div>
-      <p className="field-hint">Your maximum stays private. Scout only proposes your opening offer.</p>
+      <p className="field-hint">Your maximum stays private. Haggleface only proposes your opening offer.</p>
       <label className="field-label">Set the tone</label>
       <div className="tone-options">{['Friendly', 'Direct', 'Flexible'].map(t => <button disabled={status !== 'idle'} className={tone === t ? 'selected' : ''} key={t} onClick={() => setTone(t)}>{tone === t && <Check size={12} />} {t}</button>)}</div>
       {status === 'idle' ? <Button className="full-width" onClick={draft}><Sparkles size={16} />Draft an offer</Button> : <div className="draft-box">

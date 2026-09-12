@@ -142,7 +142,7 @@ export function AgentPanel({
               <p>
                 {browsing
                   ? "Opening the marketplace and looking for matches…"
-                  : "Watch Scout search, compare, and find the good stuff. Every step, right here."}
+                  : "Watch Haggleface search, compare, and find the good stuff. Every step, right here."}
               </p>
               <div className="browser-placeholder-cards">
                 <i />
@@ -160,7 +160,7 @@ export function AgentPanel({
           {browsing && (
             <div className="agent-cursor">
               <MousePointer2 size={19} fill="currentColor" />
-              <span>Scout is browsing</span>
+              <span>Haggleface is browsing</span>
             </div>
           )}
         </div>

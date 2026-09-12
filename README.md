@@ -1,17 +1,19 @@
 # HaggleFace
 
+Public app: **https://haggleface.vercel.app**. The Vercel project is `haggleface`, with Clerk authentication, Claude Sonnet 5, and Convex production deployment `cheery-bison-90`.
+
 **A better find.** A working AI secondhand-shopping demo: cross-marketplace search, live browser visibility, progressive listings, transparent deal ranking, image input, and an approval-first negotiation flow.
 
 ## Run
 
-Node.js 22+ and pnpm are required.
+Node.js 24 and pnpm 11.20.0 are required. Teammates should read [the team workflow](docs/TEAM_WORKFLOW.md); coding agents should read [AGENTS.md](AGENTS.md).
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-The server binds to `0.0.0.0`. Open the port printed in the terminal using your server's LAN or Tailscale address. **A verified production build is currently running at http://100.121.141.15:3003.** That tailnet address is also allowlisted in `next.config.ts` so Next.js development assets and hot reload work remotely. Add your own hostname there when running on another machine. To start the production build yourself, run `pnpm build` followed by `pnpm start --port 3003`.
+Open the development URL printed in the terminal. Shared testing uses Vercel branch previews; the public app is https://haggleface.vercel.app. To run a production build locally, use `pnpm build` followed by `pnpm start`.
 
 No environment variables are needed for the complete demo. Click the Sony example to see two concurrent simulated browsers, incremental results, and live ranking. Open a listing, inspect it, draft an offer, edit the message, and approve it. No real seller is contacted in demo mode.
 
@@ -34,10 +36,10 @@ Copy `.env.example` to `.env.local` and fill in:
 1. Create a Clerk application and activate the **Convex integration** in its dashboard. Configure the frontend URL and allowed redirects for your deployed domain.
 2. Run `pnpm convex:dev` to create/select a Convex deployment. Set `CLERK_JWT_ISSUER_DOMAIN` and `CONVEX_SERVER_SECRET` in its dashboard, then sync the functions.
 3. Add all keys above and restart Next.js. Live mode deliberately requires Clerk and Convex instead of putting authenticated browser profiles in ephemeral process memory.
-4. Sign into Scout. Open **Connect Facebook** (the dialog also supports eBay). Start the interactive Steel browser, sign into the marketplace yourself, then save the connection. Steel snapshots the persistent profile on release. Passwords never enter this application's database.
+4. Sign into Haggleface. Open **Connect Facebook** (the dialog also supports eBay). Start the interactive Steel browser, sign into the marketplace yourself, then save the connection. Steel snapshots the persistent profile on release. Passwords never enter this application's database.
 5. Start a search. Both selected marketplaces run concurrently through **Steel + Playwright**, without marketplace search APIs. Convex receives each validated listing and publishes reactive state to the frontend.
 
-Use HTTPS for Clerk and live interactive browser use on deployed domains. For an authenticated tailnet deployment, use your established HTTPS reverse proxy/Tailscale Serve configuration. Plain tailnet HTTP is sufficient for this credential-free demo.
+Vercel supplies HTTPS for the shared app and branch previews. No tailnet membership is needed.
 
 ## What is implemented, and what is verified
 
@@ -47,7 +49,9 @@ Use HTTPS for Clerk and live interactive browser use on deployed domains. For an
 
 **Claude verified:** a real `claude-sonnet-5` API call returned schema-validated structured product data. The provider reads `ANTHROPIC_API_KEY`; for existing installations, a Claude-format key in the old `OPENAI_API_KEY` field is also recognized. An actual OpenAI key is never sent to Anthropic. `.env.local` takes precedence over `.env` for model selection.
 
-**Not live-verified here:** authenticated marketplace scraping/sending, Steel profile reuse, and deployed Convex functions. These need your external keys and marketplace account sessions. Marketplace DOMs and account challenges vary; failures appear as actionable per-marketplace states, and a failed source does not erase results from the other source. A messaging failure is recorded as unconfirmed rather than automatically retried, preventing accidental duplicate offers.
+**Deployment verified:** Convex functions and schema have been deployed to both test and production. Public Vercel browser tests verify sign-in/sign-up controls and structured signed-out responses from the agent endpoints.
+
+**Not live-verified here:** authenticated marketplace scraping/sending and Steel profile reuse. These need signed-in marketplace sessions. Marketplace DOMs and account challenges vary; failures appear as actionable per-marketplace states, and a failed source does not erase results from the other source. A messaging failure is recorded as unconfirmed rather than automatically retried, preventing accidental duplicate offers.
 
 ### Deliberate demo behavior
 
@@ -91,10 +95,10 @@ pnpm build
 
 # With the app already running and an installed Playwright Chromium:
 pnpm exec playwright install chromium
-QA_BASE_URL=http://your-tailnet-host:3003 pnpm exec playwright test
+QA_BASE_URL=http://127.0.0.1:3000 pnpm exec playwright test tests/browser/shopping.spec.ts tests/browser/api.spec.ts
 
 # Reuse an existing Chromium binary if needed:
-CHROMIUM_PATH=/path/to/chromium QA_BASE_URL=http://your-tailnet-host:3003 pnpm exec playwright test
+CHROMIUM_PATH=/path/to/chromium QA_LIVE_AUTH=1 QA_BASE_URL=https://YOUR-PREVIEW-URL pnpm exec playwright test tests/browser/deployed.spec.ts
 ```
 
 Browser tests capture the landing page, results, listing detail, approval dialog, and mobile views under `test-results/` (gitignored). TypeScript 6 and ESLint 9 are pinned to remain compatible with Next.js's current lint plugins; the app uses the installed stable Next.js 16, React 19, and AI SDK 7.

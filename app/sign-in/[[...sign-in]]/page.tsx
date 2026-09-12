@@ -5,7 +5,7 @@ export default function SignInPage() {
   return (
     <div className="auth-page">
       <Link href="/" className="brand">
-        scout<span className="brand-dot">.</span>
+        haggleface<span className="brand-dot">.</span>
       </Link>
       <SignIn routing="path" path="/sign-in" signUpUrl="/sign-up" />
       <p className="auth-page-note">
