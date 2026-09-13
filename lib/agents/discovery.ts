@@ -23,7 +23,7 @@ export async function runDiscovery(id:string){
   await progress({status:'searching',message:job.kind==='inspection'?'Inspecting selected listing':'Collecting and inspecting listings',sessionId,debugUrl:viewerUrl(session.debugUrl)});
   const {browser,page}=await connectBrowser(session.id);page.setDefaultTimeout(5000);
   try{
-   const input:SearchInput={query:state.query,condition:'any',marketplace:job.marketplace,location:'San Francisco',radius:25,...state.filters};
+   const input:SearchInput={query:state.query,condition:'any',marketplace:job.marketplace,location:'Toronto',radius:25,...state.filters};
    const queries=state.identification?.searchQueries??[state.query];const term=queries[Math.min(cursor.queryIndex,queries.length-1)];
    const add=async(l:Listing)=>{if(collected.has(l.id)||added>=30||Date.now()-started>150_000)return;if(l.similarityScore<.25)return;collected.set(l.id,l);added++;await progress({listing:l});};
    if(job.kind==='discovery'){

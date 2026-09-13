@@ -148,7 +148,7 @@ export function ShoppingApp({
   const [maxPrice, setMaxPrice] = useState("");
   const [condition, setCondition] = useState("any");
   const [market, setMarket] = useState("all");
-  const [location, setLocation] = useState("San Francisco");
+  const [location, setLocation] = useState("Toronto");
   const [radius, setRadius] = useState(25);
   const [filters, setFilters] = useState(false);
   const [sort, setSort] = useState("best");
