@@ -83,10 +83,15 @@ export function parseListingHtml(html:string,marketplace:Marketplace,url:string)
  const price=Number.isFinite(priceNum)&&priceNum>0?priceNum:null;
 
  const rawCurrency=String(offer?.priceCurrency||meta('product:price:currency')||'');
+ // Marketplace states the currency in its own embedded listing payload even when no meta tag
+ // and no "CA$" prefix is rendered, and that field is the only machine-readable USD/CAD
+ // evidence on a Marketplace item page. Without it a CA$ listing was silently read as USD.
+ const embeddedCurrency=(unescapedHtml.match(/"(?:currency|currency_code|priceCurrency)"\s*:\s*"(USD|CAD)"/i)?.[1]||'').toUpperCase();
  let currency:'USD'|'CAD'='USD';
- if(marketplace==='kijiji'||/C(?:A)?\s*\$|CAD/i.test(String(rawPrice||''))||/C(?:A)?\s*\$|CAD/i.test(html.slice(0,3000)))currency='CAD';
+ if(embeddedCurrency)currency=embeddedCurrency as 'USD'|'CAD';
+ else if(marketplace==='kijiji'||/C(?:A)?\s*\$|CAD/i.test(String(rawPrice||''))||/C(?:A)?\s*\$|CAD/i.test(html.slice(0,3000)))currency='CAD';
  else if(rawCurrency==='CAD')currency='CAD';
- const currencyVerified=Boolean(rawCurrency==='CAD'||rawCurrency==='USD'||marketplace==='kijiji'||/USD|CAD/i.test(String(rawPrice||'')));
+ const currencyVerified=Boolean(embeddedCurrency||rawCurrency==='CAD'||rawCurrency==='USD'||marketplace==='kijiji'||/USD|CAD/i.test(String(rawPrice||'')));
 
  const imageUrls:string[]=[];
  const addImg=(src?:unknown)=>{
@@ -203,7 +208,9 @@ export async function inspectListing(page:Page,listing:Listing){
   const price=Number.isFinite(priceNum)&&priceNum>0?priceNum:null;
 
   const rawCurr=String(offer?.priceCurrency||meta('meta[property="product:price:currency"]')||'');
-  const currency=rawCurr==='CAD'||/C(?:A)?\s*\$|CAD/i.test(rawPrice)?'CAD':'USD';
+  // null means the item page showed no currency evidence at all. Defaulting to USD here
+  // relabelled unmarked CA$ listings, which then failed the negotiation currency check.
+  const currency=rawCurr==='CAD'||/C(?:A)?\s*\$|CAD/i.test(rawPrice)?'CAD':rawCurr==='USD'||/US\s*\$|USD/i.test(rawPrice)?'USD':null;
 
   const images:string[]=[];
   const addImg=(src?:string|null)=>{
@@ -252,7 +259,12 @@ export async function inspectListing(page:Page,listing:Listing){
 
   const body=document.body.innerText;
   const sold=/OutOfStock|SoldOut|Discontinued/.test(String(offer?.availability))||/This listing (?:has sold|is no longer available)|This ad is no longer available|This listing sold/i.test(body);
-  const available=/InStock|LimitedAvailability/.test(String(offer?.availability))||Array.from(document.querySelectorAll('button,a')).some(n=>/^Message seller$|^Contact seller$|^Reply to Ad$/i.test(n.textContent?.trim()||''));
+  // Marketplace labels its buyer action just "Message" and renders it as a div with a button
+  // role, so scanning button/a text alone matched nothing and every Facebook listing came back
+  // as availability "unknown" — which stopped every negotiation before the chat was opened.
+  const actionNames=/^(?:message|message seller|send message|send seller a message|chat with seller|ask for details|contact seller|reply to ad|buy it now|add to cart)$/i;
+  const actionScope=document.querySelector('div[role="main"]')||document.body;
+  const available=/InStock|LimitedAvailability/.test(String(offer?.availability))||Array.from(actionScope.querySelectorAll('button,a,[role="button"],[role="link"]')).some(n=>actionNames.test((n.getAttribute('aria-label')||n.textContent||'').trim()));
 
   const rawTitle=(typeof product?.name==='string'?product.name:'')||text('h1, .x-item-title__mainTitle, [data-testid="listing-title"]')||meta('meta[property="og:title"]')||document.title;
 
@@ -278,7 +290,7 @@ export async function inspectListing(page:Page,listing:Listing){
 
  const finalTitle=domDetail.title||htmlDetail?.title||listing.title;
  const finalPrice=domDetail.price??htmlDetail?.price??(listing.price>0?listing.price:0);
- const finalCurrency=(domDetail.currency==='CAD'||domDetail.currency==='USD'?domDetail.currency:htmlDetail?.currency||listing.currency) as 'USD'|'CAD';
+ const finalCurrency=(domDetail.currency||(htmlDetail?.currencyVerified?htmlDetail.currency:null)||listing.currency) as 'USD'|'CAD';
  const finalCondition=domDetail.condition||htmlDetail?.condition||listing.condition||'Like new';
  const combinedImages=[...new Set([...domDetail.images,...(htmlDetail?.imageUrls||[]),...listing.imageUrls])];
  let finalImages=combinedImages.filter(u=>/^https?:\/\/|^\//i.test(u)).slice(0,8);
@@ -299,7 +311,8 @@ export async function inspectListing(page:Page,listing:Listing){
   description:(domDetail.description||htmlDetail?.description||listing.description||'').slice(0,6000),
   price:finalPrice,
   currency:finalCurrency,
-  currencyVerified:true,
+  // Claiming verification unconditionally defeated the negotiation currency guard entirely.
+  currencyVerified:Boolean(domDetail.currency)||htmlDetail?.currencyVerified===true||listing.currencyVerified===true,
   condition:finalCondition,
   imageUrls:finalImages,
   sellerName:finalSeller,
