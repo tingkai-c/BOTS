@@ -15,26 +15,31 @@ import {
   ArrowUpRight,
   Bookmark,
   Check,
-  CheckCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Columns3,
   Command,
   Compass,
   History,
   ImagePlus,
   Info,
+  Layers,
   ListFilter,
   Loader2,
   LogIn,
   LogOut,
   MapPin,
+  Play,
   Plus,
   RefreshCw,
+  Scale,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Star,
+  Truck,
   X,
 } from "lucide-react";
 import type {
@@ -174,12 +179,7 @@ export function ShoppingApp({
   const [selectedSnapshot, setSelected] = useState<RankedListing | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState('listings');
   const [negotiatedIds,setNegotiatedIds]=useState<string[]>([]);
-  const [reviewOpen,setReviewOpen]=useState(false);
-  const [reviewShownFor,setReviewShownFor]=useState<string|null>(null);
-  const [reviewDecisions,setReviewDecisions]=useState<Record<string,'liked'|'rejected'>>({});
-  const [reviewBusyId,setReviewBusyId]=useState<string|null>(null);
-  const [reviewErrors,setReviewErrors]=useState<Record<string,string>>({});
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('CAD');
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [negotiate, setNegotiate] = useState<RankedListing | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
@@ -208,6 +208,14 @@ export function ShoppingApp({
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
   const workspaceRef = useRef<HTMLDivElement>(null);
+
+  // Decision gate state
+  const [decisionOpen, setDecisionOpen] = useState(false);
+  const [decisionListings, setDecisionListings] = useState<RankedListing[]>([]);
+  const [decisionPaused, setDecisionPaused] = useState(false);
+  const pauseRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
+  const roundStartCount = useRef(0);
+  const lastResultAt = useRef(0);
 
   const isMarketConnected = (m: Marketplace) =>
     m === "facebook" ? connectedMarkets.facebook || connected : connectedMarkets[m];
@@ -315,6 +323,49 @@ export function ShoppingApp({
     };
   }, []);
 
+  // Decision gate: fire when 5 new results arrive in this round OR 10 s elapse with no new result
+  useEffect(() => {
+    if (decisionOpen) return; // already showing
+    const ranked = rankListings(state?.listings || []);
+    const current = ranked.length;
+    if (current === 0) return;
+    // track the timestamp of the most recent listing
+    lastResultAt.current = Date.now();
+    // 5-result trigger
+    const newThisRound = current - roundStartCount.current;
+    if (newThisRound >= 5) {
+      if (!pauseRef.current) {
+        let res: () => void = () => {};
+        const p = new Promise<void>((r) => { res = r; });
+        pauseRef.current = { promise: p, resolve: res };
+      }
+      setDecisionPaused(true);
+      setDecisionListings(ranked.slice(0, 5));
+      setDecisionOpen(true);
+      return;
+    }
+    // 10-second idle trigger — only while an active search is running
+    const isActive = Boolean(state && ['queued','searching','ranking'].includes(state.status));
+    if (!isActive) return;
+    const id = setInterval(() => {
+      if (Date.now() - lastResultAt.current >= 10_000 && !decisionOpen) {
+        const snap = rankListings(state?.listings || []);
+        if (snap.length > 0) {
+          if (!pauseRef.current) {
+            let res: () => void = () => {};
+            const p = new Promise<void>((r) => { res = r; });
+            pauseRef.current = { promise: p, resolve: res };
+          }
+          setDecisionPaused(true);
+          setDecisionListings(snap.slice(0, 5));
+          setDecisionOpen(true);
+        }
+      }
+    }, 1_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.listings?.length, state?.status]);
+
   const restoredId = useRef<string | null>(null);
   const updateLive = useCallback((s: SearchState) => {
     setState(s);
@@ -332,12 +383,21 @@ export function ShoppingApp({
     }
   }, []);
 
-  const applyEvent = (event: StreamEvent) => {
+  const applyEvent = async (event: StreamEvent) => {
+    if (pauseRef.current) {
+      await pauseRef.current.promise;
+    }
     if (event.type === "state") {
       setState(event.state);
       restoredId.current = event.state.id;
-      if (event.state.filters?.maxPrice)
-        setMaxPrice(String(event.state.filters.maxPrice));
+      if (event.state.filters) {
+        setMaxPrice(event.state.filters.maxPrice ? String(event.state.filters.maxPrice) : "");
+        setCondition(event.state.filters.condition);
+        setMarket(event.state.filters.marketplace);
+        setLocation(event.state.filters.location);
+        setRadius(event.state.filters.radius);
+        setCurrency(event.state.filters.currency ?? "USD");
+      }
       window.history.replaceState(null, "", `/search/${event.state.id}`);
       return;
     }
@@ -376,8 +436,24 @@ export function ShoppingApp({
     });
   };
 
+  const handleKeepGoing = useCallback(() => {
+    if (pauseRef.current) {
+      pauseRef.current.resolve();
+      pauseRef.current = null;
+    }
+    setDecisionPaused(false);
+    roundStartCount.current = state?.listings?.length || 0;
+    lastResultAt.current = Date.now();
+    setDecisionOpen(false);
+  }, [state?.listings?.length]);
+
   async function search(text = query) {
     if (busy || (!text.trim() && !image)) return;
+    if (pauseRef.current) {
+      pauseRef.current.resolve();
+      pauseRef.current = null;
+    }
+    setDecisionPaused(false);
     setQuery(text);
     if (text.trim()) {
       setRecentSearches((prev) => [text.trim(), ...prev.filter((q) => q !== text.trim())].slice(0, 8));
@@ -397,6 +473,9 @@ export function ShoppingApp({
     setActiveTab("discover");
     setSelected(null);
     setState(null);
+    setDecisionOpen(false);
+    roundStartCount.current = 0;
+    lastResultAt.current = Date.now();
     setActiveMarket(
       market === "ebay" ? "ebay" : market === "kijiji" ? "kijiji" : market === "facebook" ? "facebook" : "all",
     );
@@ -434,6 +513,12 @@ export function ShoppingApp({
         setError(e.message || "Could not complete search.");
       }
     } finally {
+      const activePause = pauseRef.current as { resolve: () => void } | null;
+      if (activePause) {
+        activePause.resolve();
+        pauseRef.current = null;
+      }
+      setDecisionPaused(false);
       setBusy(false);
     }
   }
@@ -599,7 +684,6 @@ export function ShoppingApp({
   async function findMore(listingId?:string){if(!state)return;setDiscoveryBusy(true);try{const result=await readJsonResponse<{demo?:boolean}>(await fetch('/api/workspace/discovery',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspaceId:state.id,listingId})}));if(result.demo)setError('Demo mode has no additional marketplace results.');}catch(e){setError((e as Error).message);}finally{setDiscoveryBusy(false);}}
   let listings = ranked.filter(
     (l) =>
-      l.currency === currency &&
       (market === "all" || l.marketplace === market) &&
       (!maxPrice || l.price <= Number(maxPrice)) &&
       (condition === "any" || l.condition === condition) &&
@@ -613,6 +697,7 @@ export function ShoppingApp({
   if (sort === "newest")
     listings = [...listings].sort((a, b) => b.scrapedAt - a.scrapedAt);
   const best = listings[0];
+  const filteredOutCount = Math.max(0, ranked.length - listings.length);
 
   return (
     <div className="app-shell">
@@ -993,18 +1078,40 @@ export function ShoppingApp({
               </div>
 
               {state ? (
-                <label className="sort-control">
-                  <ArrowDownUp size={13} />
-                  <select
-                    aria-label="Sort listings"
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                  >
-                    <option value="best">Best deals first</option>
-                    <option value="price">Lowest total price</option>
-                    <option value="newest">Recently found</option>
-                  </select>
-                </label>
+                <div className="results-nav-right">
+                  {ranked.length >= 5 && (
+                    <button
+                      type="button"
+                      className="decide-btn"
+                      onClick={() => {
+                        if (busy && !pauseRef.current) {
+                          let res: () => void = () => {};
+                          const p = new Promise<void>((r) => { res = r; });
+                          pauseRef.current = { promise: p, resolve: res };
+                          setDecisionPaused(true);
+                        }
+                        setDecisionListings(ranked.slice(0, 5));
+                        setDecisionOpen(true);
+                      }}
+                      aria-label="Side-by-side comparison"
+                    >
+                      <Scale size={14} />
+                      Decide
+                    </button>
+                  )}
+                  <label className="sort-control">
+                    <ArrowDownUp size={13} />
+                    <select
+                      aria-label="Sort listings"
+                      value={sort}
+                      onChange={(e) => setSort(e.target.value)}
+                    >
+                      <option value="best">Best deals first</option>
+                      <option value="price">Lowest total price</option>
+                      <option value="newest">Recently found</option>
+                    </select>
+                  </label>
+                </div>
               ) : null}
             </div>
 
@@ -1103,14 +1210,18 @@ export function ShoppingApp({
                 {best && (
                   <div className="result-summary">
                     <span>
-                      {busy ? (
-                        <i className="working-dot" />
+                      {busy && !decisionPaused ? (
+                        <>
+                          <i className="working-dot" /> Finding your shortlist
+                        </>
                       ) : (
-                        <CheckCheck size={14} />
-                      )}{" "}
-                      {busy
-                        ? "Finding your shortlist"
-                        : "Your shortlist is ready"}
+                        <>
+                          <ListFilter size={13} />
+                          {filteredOutCount === 1
+                            ? "1 result filtered out"
+                            : `${filteredOutCount} results filtered out`}
+                        </>
+                      )}
                     </span>
                     <span>
                       From{" "}
@@ -1238,6 +1349,8 @@ export function ShoppingApp({
             onConnect={() => setConnectionOpen(true)}
             isCollapsed={panelCollapsed}
             onExpand={() => setPanelCollapsed(false)}
+            decisionPaused={decisionPaused}
+            onKeepGoing={handleKeepGoing}
             style={!panelCollapsed && agentPanelWidth ? { flex: `0 0 ${agentPanelWidth}px`, width: `${agentPanelWidth}px` } : undefined}
           />
         </div>
@@ -1587,6 +1700,462 @@ export function ShoppingApp({
           </div>
         </div>
       </Modal>
+
+      {/* Decision / Comparison Modal */}
+      <DecisionModal
+        open={decisionOpen}
+        listings={decisionListings}
+        negotiatedIds={negotiatedIds}
+        busy={busy}
+        decisionPaused={decisionPaused}
+        onContinue={handleKeepGoing}
+        onClose={() => setDecisionOpen(false)}
+        onNegotiate={(l) => {
+          setDecisionOpen(false);
+          if (negotiatedIds.includes(l.id)) setWorkspaceTab('negotiations');
+          else setNegotiate(l);
+        }}
+        onSelect={(l) => {
+          setDecisionOpen(false);
+          setSelected(l);
+        }}
+      />
     </div>
+  );
+}
+
+function DecisionModal({
+  open,
+  listings,
+  negotiatedIds,
+  busy,
+  decisionPaused,
+  onContinue,
+  onClose,
+  onNegotiate,
+  onSelect,
+}: {
+  open: boolean;
+  listings: RankedListing[];
+  negotiatedIds: string[];
+  busy: boolean;
+  decisionPaused: boolean;
+  onContinue: () => void;
+  onClose: () => void;
+  onNegotiate: (l: RankedListing) => void;
+  onSelect: (l: RankedListing) => void;
+}) {
+  const topListings = listings.slice(0, 5);
+  const [viewMode, setViewMode] = useState<'compare' | 'single'>('compare');
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const count = topListings.length;
+  const prevCard = useCallback(() => {
+    if (count > 0) setCurrentIndex((i) => (i - 1 + count) % count);
+  }, [count]);
+
+  const nextCard = useCallback(() => {
+    if (count > 0) setCurrentIndex((i) => (i + 1) % count);
+  }, [count]);
+
+  useEffect(() => {
+    if (!open || viewMode !== 'single') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') prevCard();
+      else if (e.key === 'ArrowRight') nextCard();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, viewMode, prevCard, nextCard]);
+
+  const currentListing = topListings[currentIndex] || topListings[0];
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={(v) => { if (!v) onClose(); }}
+      title="Compare your shortlist"
+      description={`Top ${topListings.length} scored listing${topListings.length !== 1 ? 's' : ''} — compare side-by-side or inspect single cards.`}
+      className="decision-modal"
+      headerActions={
+        decisionPaused ? (
+          <button
+            type="button"
+            className="keep-going-btn popup-keep-going-btn"
+            onClick={onContinue}
+            aria-label="Keep going"
+          >
+            <Play size={11} fill="currentColor" />
+            Keep going
+          </button>
+        ) : null
+      }
+    >
+      <div className="decision-toolbar">
+        <div className="decision-view-toggle">
+          <button
+            type="button"
+            className={`toggle-option ${viewMode === 'compare' ? 'active' : ''}`}
+            onClick={() => setViewMode('compare')}
+            aria-label="Compare all side-by-side"
+          >
+            <Columns3 size={13} />
+            <span>Compare all</span>
+          </button>
+          <button
+            type="button"
+            className={`toggle-option ${viewMode === 'single' ? 'active' : ''}`}
+            onClick={() => setViewMode('single')}
+            aria-label="Single card view"
+          >
+            <Layers size={13} />
+            <span>Single card</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="decision-modal-body">
+        {viewMode === 'compare' ? (
+          <div className="decision-table-wrap">
+            <table className="decision-table">
+              <thead>
+                <tr className="decision-row-item">
+                  <th className="decision-aspect-th decision-aspect-th-corner">
+                    <span className="aspect-title">Item</span>
+                  </th>
+                  {topListings.map((l, i) => (
+                    <th key={l.id} className="decision-col-th">
+                      <div className="decision-col-card-head">
+                        <span className="decision-rank-badge">#{i + 1}</span>
+                        <button
+                          className="decision-col-image-btn"
+                          onClick={() => onSelect(l)}
+                          aria-label={`View ${l.title}`}
+                        >
+                          <img
+                            src={l.imageUrls[0] || '/product.svg'}
+                            alt={l.title}
+                            onError={(e) => { e.currentTarget.src = '/product.svg'; }}
+                          />
+                        </button>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="decision-row-aspect decision-row-title">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Title</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <button
+                        className="decision-cell-title"
+                        onClick={() => onSelect(l)}
+                        title={l.title}
+                      >
+                        {l.title}
+                      </button>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-price">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Price</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-cell-price">
+                        <span className="decision-price-val">{money(l.price, l.currency)}</span>
+                        {l.shippingCost === 0 ? (
+                          <span className="decision-shipping-tag free">
+                            <Truck size={11} /> Free ship
+                          </span>
+                        ) : l.shippingCost ? (
+                          <span className="decision-shipping-tag">
+                            <Truck size={11} /> +{money(l.shippingCost, l.currency)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-region">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Region</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-cell-region" title={l.location || 'Not specified'}>
+                        <MapPin size={12} className="aspect-icon" />
+                        <span className="decision-region-text">{l.location || 'Not specified'}</span>
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-score">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Deal Score</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <span className={`decision-score-pill ${l.dealScore >= 85 ? 'excellent' : l.dealScore >= 75 ? 'good' : 'fair'}`}>
+                        {l.dealScore} · {l.dealScore >= 85 ? 'Excellent' : l.dealScore >= 75 ? 'Good deal' : 'Fair price'}
+                      </span>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-condition">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Condition</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <span className="decision-condition-tag">
+                        {l.condition || 'Pre-owned'}
+                      </span>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-platform">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Platform</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <MarketplaceBadge marketplace={l.marketplace} />
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-seller">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Seller</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      {l.sellerRating != null ? (
+                        <span className="decision-seller-val">
+                          <Star size={11} fill="currentColor" />
+                          {l.sellerRating}
+                          {l.sellerReviewCount != null ? ` (${l.sellerReviewCount})` : ''}
+                        </span>
+                      ) : l.sellerName ? (
+                        <span className="decision-seller-name" title={l.sellerName}>
+                          {l.sellerName}
+                        </span>
+                      ) : (
+                        <span className="decision-seller-none">—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-action">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Action</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-action-cell">
+                        <Button
+                          size="sm"
+                          onClick={() => onNegotiate(l)}
+                          disabled={l.availability === 'sold'}
+                          className="decision-negotiate-btn"
+                        >
+                          <Sparkles size={12} />
+                          {negotiatedIds.includes(l.id) ? 'In chat' : 'Negotiate'}
+                        </Button>
+                        <button className="decision-details-link" onClick={() => onSelect(l)}>
+                          Details <ArrowUpRight size={11} />
+                        </button>
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : currentListing ? (
+          <div className="decision-single-view">
+            <div className="single-card-carousel">
+              <button
+                type="button"
+                className="single-card-arrow prev"
+                onClick={prevCard}
+                aria-label="Previous card (circular)"
+                title="Previous listing"
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              <article className="decision-single-card">
+                <div className="single-card-header">
+                  <span className="single-card-rank">#{currentIndex + 1} of {topListings.length}</span>
+                  <span className={`decision-score-pill ${currentListing.dealScore >= 85 ? 'excellent' : currentListing.dealScore >= 75 ? 'good' : 'fair'}`}>
+                    {currentListing.dealScore} · {currentListing.dealScore >= 85 ? 'Excellent' : currentListing.dealScore >= 75 ? 'Good deal' : 'Fair price'}
+                  </span>
+                </div>
+
+                <button
+                  className="single-card-image-btn"
+                  onClick={() => onSelect(currentListing)}
+                  aria-label={`View ${currentListing.title}`}
+                >
+                  <img
+                    src={currentListing.imageUrls[0] || '/product.svg'}
+                    alt={currentListing.title}
+                    onError={(e) => { e.currentTarget.src = '/product.svg'; }}
+                  />
+                </button>
+
+                <div className="single-card-info">
+                  <button
+                    className="single-card-title"
+                    onClick={() => onSelect(currentListing)}
+                    title={currentListing.title}
+                  >
+                    {currentListing.title}
+                  </button>
+
+                  <div className="single-card-price-row">
+                    <span className="single-card-price">{money(currentListing.price, currentListing.currency)}</span>
+                    {currentListing.shippingCost === 0 ? (
+                      <span className="decision-shipping-tag free">
+                        <Truck size={11} /> Free shipping
+                      </span>
+                    ) : currentListing.shippingCost ? (
+                      <span className="decision-shipping-tag">
+                        <Truck size={11} /> +{money(currentListing.shippingCost, currentListing.currency)} shipping
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="single-card-aspects-grid">
+                    <div className="aspect-item">
+                      <span className="aspect-label">Region</span>
+                      <span className="aspect-val" title={currentListing.location || 'Not specified'}>
+                        <MapPin size={11} className="aspect-icon" />
+                        {currentListing.location || 'Not specified'}
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Condition</span>
+                      <span className="aspect-val">
+                        <span className="decision-condition-tag">
+                          {currentListing.condition || 'Pre-owned'}
+                        </span>
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Platform</span>
+                      <span className="aspect-val">
+                        <MarketplaceBadge marketplace={currentListing.marketplace} />
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Seller</span>
+                      <span className="aspect-val">
+                        {currentListing.sellerRating != null ? (
+                          <span className="decision-seller-val">
+                            <Star size={11} fill="currentColor" />
+                            {currentListing.sellerRating}
+                            {currentListing.sellerReviewCount != null ? ` (${currentListing.sellerReviewCount})` : ''}
+                          </span>
+                        ) : currentListing.sellerName ? (
+                          <span className="decision-seller-name" title={currentListing.sellerName}>
+                            {currentListing.sellerName}
+                          </span>
+                        ) : (
+                          <span className="decision-seller-none">—</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="single-card-actions">
+                  <Button
+                    size="sm"
+                    onClick={() => onNegotiate(currentListing)}
+                    disabled={currentListing.availability === 'sold'}
+                    className="decision-negotiate-btn single-negotiate-btn"
+                  >
+                    <Sparkles size={13} />
+                    {negotiatedIds.includes(currentListing.id) ? 'In chat' : 'Start negotiation'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onSelect(currentListing)}
+                    className="single-details-btn"
+                  >
+                    Details <ArrowUpRight size={12} />
+                  </Button>
+                </div>
+              </article>
+
+              <button
+                type="button"
+                className="single-card-arrow next"
+                onClick={nextCard}
+                aria-label="Next card (circular)"
+                title="Next listing"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+
+            {/* Quick jump slider bar */}
+            {topListings.length > 1 && (
+              <div className="single-card-slider-bar">
+                <div className="slider-label-row">
+                  <span className="slider-hint-text">Slide to jump between top {topListings.length}:</span>
+                  <span className="slider-index-tag">#{currentIndex + 1}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={topListings.length - 1}
+                  step={1}
+                  value={currentIndex}
+                  onChange={(e) => setCurrentIndex(Number(e.target.value))}
+                  className="single-card-range-slider"
+                  aria-label="Slider to navigate between cards"
+                />
+                <div className="slider-numbers-row">
+                  {topListings.map((l, i) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      className={`slider-number-btn ${i === currentIndex ? 'active' : ''}`}
+                      onClick={() => setCurrentIndex(i)}
+                      aria-label={`Jump to card ${i + 1}`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+      <div className="decision-modal-footer">
+        <Button onClick={onContinue} disabled={!busy} variant="outline">
+          {busy
+            ? <><Loader2 size={14} className="spin" />Continue searching</>
+            : 'Search complete'}
+        </Button>
+        <span className="decision-footer-hint">
+          {busy
+            ? 'Agents are still searching — continue to collect more results.'
+            : 'All agents have finished. Start a new search to find more.'}
+        </span>
+      </div>
+    </Modal>
   );
 }
