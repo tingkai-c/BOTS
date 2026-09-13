@@ -317,7 +317,7 @@ export function ShoppingApp({
     };
   }, []);
 
-  // Decision gate: fire when 10 new results arrive in this round OR 10 s elapse with no new result
+  // Decision gate: fire when 5 new results arrive in this round OR 10 s elapse with no new result
   useEffect(() => {
     if (decisionOpen) return; // already showing
     const ranked = rankListings(state?.listings || []);
@@ -325,10 +325,10 @@ export function ShoppingApp({
     if (current === 0) return;
     // track the timestamp of the most recent listing
     lastResultAt.current = Date.now();
-    // 10-result trigger
+    // 5-result trigger
     const newThisRound = current - roundStartCount.current;
-    if (newThisRound >= 10) {
-      setDecisionListings(ranked);
+    if (newThisRound >= 5) {
+      setDecisionListings(ranked.slice(0, 5));
       setDecisionOpen(true);
       return;
     }
@@ -339,7 +339,7 @@ export function ShoppingApp({
       if (Date.now() - lastResultAt.current >= 10_000 && !decisionOpen) {
         const snap = rankListings(state?.listings || []);
         if (snap.length > 0) {
-          setDecisionListings(snap);
+          setDecisionListings(snap.slice(0, 5));
           setDecisionOpen(true);
         }
       }
@@ -1005,11 +1005,11 @@ export function ShoppingApp({
 
               {state ? (
                 <div className="results-nav-right">
-                  {ranked.length >= 10 && (
+                  {ranked.length >= 5 && (
                     <button
                       type="button"
                       className="decide-btn"
-                      onClick={() => { setDecisionListings(ranked); setDecisionOpen(true); }}
+                      onClick={() => { setDecisionListings(ranked.slice(0, 5)); setDecisionOpen(true); }}
                       aria-label="Side-by-side comparison"
                     >
                       <Scale size={14} />
@@ -1640,12 +1640,14 @@ function DecisionModal({
   onNegotiate: (l: RankedListing) => void;
   onSelect: (l: RankedListing) => void;
 }) {
+  const topListings = listings.slice(0, 5);
+
   return (
     <Modal
       open={open}
       onOpenChange={(v) => { if (!v) onClose(); }}
       title="Compare your shortlist"
-      description={`${listings.length} listing${listings.length !== 1 ? 's' : ''} found — scroll horizontally to compare aspects across cards.`}
+      description={`Top ${topListings.length} scored listing${topListings.length !== 1 ? 's' : ''} — scroll horizontally to compare aspects across cards.`}
       className="decision-modal"
     >
       <div className="decision-modal-body">
@@ -1656,7 +1658,7 @@ function DecisionModal({
                 <th className="decision-aspect-th decision-aspect-th-corner">
                   <span className="aspect-title">Item</span>
                 </th>
-                {listings.map((l, i) => (
+                {topListings.map((l, i) => (
                   <th key={l.id} className="decision-col-th">
                     <div className="decision-col-card-head">
                       <span className="decision-rank-badge">#{i + 1}</span>
@@ -1681,7 +1683,7 @@ function DecisionModal({
                 <th className="decision-aspect-th">
                   <span className="aspect-title">Title</span>
                 </th>
-                {listings.map((l) => (
+                {topListings.map((l) => (
                   <td key={l.id} className="decision-col-td">
                     <button
                       className="decision-cell-title"
@@ -1697,7 +1699,7 @@ function DecisionModal({
                 <th className="decision-aspect-th">
                   <span className="aspect-title">Price</span>
                 </th>
-                {listings.map((l) => (
+                {topListings.map((l) => (
                   <td key={l.id} className="decision-col-td">
                     <div className="decision-cell-price">
                       <span className="decision-price-val">{money(l.price, l.currency)}</span>
@@ -1718,7 +1720,7 @@ function DecisionModal({
                 <th className="decision-aspect-th">
                   <span className="aspect-title">Region</span>
                 </th>
-                {listings.map((l) => (
+                {topListings.map((l) => (
                   <td key={l.id} className="decision-col-td">
                     <div className="decision-cell-region" title={l.location || 'Not specified'}>
                       <MapPin size={12} className="aspect-icon" />
@@ -1731,7 +1733,7 @@ function DecisionModal({
                 <th className="decision-aspect-th">
                   <span className="aspect-title">Deal Score</span>
                 </th>
-                {listings.map((l) => (
+                {topListings.map((l) => (
                   <td key={l.id} className="decision-col-td">
                     <span className={`decision-score-pill ${l.dealScore >= 85 ? 'excellent' : l.dealScore >= 75 ? 'good' : 'fair'}`}>
                       {l.dealScore} · {l.dealScore >= 85 ? 'Excellent' : l.dealScore >= 75 ? 'Good deal' : 'Fair price'}
@@ -1743,7 +1745,7 @@ function DecisionModal({
                 <th className="decision-aspect-th">
                   <span className="aspect-title">Condition</span>
                 </th>
-                {listings.map((l) => (
+                {topListings.map((l) => (
                   <td key={l.id} className="decision-col-td">
                     <span className="decision-condition-tag">
                       {l.condition || 'Pre-owned'}
@@ -1755,7 +1757,7 @@ function DecisionModal({
                 <th className="decision-aspect-th">
                   <span className="aspect-title">Platform</span>
                 </th>
-                {listings.map((l) => (
+                {topListings.map((l) => (
                   <td key={l.id} className="decision-col-td">
                     <MarketplaceBadge marketplace={l.marketplace} />
                   </td>
@@ -1765,7 +1767,7 @@ function DecisionModal({
                 <th className="decision-aspect-th">
                   <span className="aspect-title">Seller</span>
                 </th>
-                {listings.map((l) => (
+                {topListings.map((l) => (
                   <td key={l.id} className="decision-col-td">
                     {l.sellerRating != null ? (
                       <span className="decision-seller-val">
@@ -1787,7 +1789,7 @@ function DecisionModal({
                 <th className="decision-aspect-th">
                   <span className="aspect-title">Action</span>
                 </th>
-                {listings.map((l) => (
+                {topListings.map((l) => (
                   <td key={l.id} className="decision-col-td">
                     <div className="decision-action-cell">
                       <Button
