@@ -54,7 +54,7 @@ Vercel supplies HTTPS for the shared app and branch previews. No tailnet members
 
 **Claude verified:** a real `claude-sonnet-5` API call returned schema-validated structured product data. The provider reads `ANTHROPIC_API_KEY`; for existing installations, a Claude-format key in the old `OPENAI_API_KEY` field is also recognized. An actual OpenAI key is never sent to Anthropic. `.env.local` takes precedence over `.env` for model selection.
 
-**Deployment scope:** workspace schema/functions are deployed to test `sensible-newt-347`. This PR does not promote them to production. The native browser harness has separate successful-path Steel/Vercel runtime evidence in [the proof report](docs/STEEL_HARNESS_PROOF.md).
+**Deployment scope:** workspace schema/functions are deployed to test `sensible-newt-347` and, with the release owner's explicit approval, production `cheery-bison-90`. The native browser harness has separate successful-path Steel/Vercel runtime evidence in [the proof report](docs/STEEL_HARNESS_PROOF.md).
 
 **Not live-verified here:** authenticated marketplace scraping/sending and Steel profile reuse. These need signed-in marketplace sessions. Marketplace DOMs and account challenges vary; failures appear as actionable per-marketplace states, and a failed source does not erase results from the other source. A messaging failure is recorded as unconfirmed rather than automatically retried, preventing accidental duplicate offers.
 

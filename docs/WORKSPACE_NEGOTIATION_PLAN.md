@@ -517,6 +517,14 @@ This historical foundation checkpoint is superseded by the implementation status
 
 ### Implementation handoff
 
+#### Merge integration and production approval
+
+- The user subsequently authorized merging PR #7 and deploying the matching production backend.
+- Integrated teammate PR #8's redesigned shopping UI. Its `app/globals.css`, platform logos, agent panel, and favicon are preserved. Workspace/sidebar styles now live in `app/workspace.css`; Search, History, Account settings, collapse controls, and the mobile drawer remain.
+- Preserved the teammate's item-price filtering behavior while retaining separate CAD/USD filtering. Reconciled desktop/mobile browser tests passed.
+- Integrated teammate PR #9's bot-block detection and post-wait login checks alongside structured detail inspection.
+- Production Convex deployment to **`cheery-bison-90`** succeeded after a dry run confirmed the target and no index deletions. Production worker activation follows the matching Vercel release.
+
 - Core checks: **17/17 unit tests**, TypeScript, ESLint, and Next.js production build passed. The earlier fixture-count assertion is fixed; Kijiji fixtures carry CAD.
 - **3/3 demo browser/API tests passed** against the local production build: search/filter/save/detail, controlled negotiation to price agreement, reload persistence, mobile layout/agent panel, image identification, connections, and invalid input/forged approval handling. Updated obsolete currency/negotiation assertions and fixed the missing favicon reference.
 - Final additive schema/functions deployed successfully to test **`sensible-newt-347`**; `work:due` returned no queued jobs. Production remains untouched.
