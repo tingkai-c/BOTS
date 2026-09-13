@@ -7,7 +7,10 @@ export const runtime='nodejs';export const maxDuration=300;
 export async function POST(req:Request){
  try{
   const user=await userId();const input=searchSchema.parse(await req.json());const price=input.query.match(/under\s*\$?(\d+)/i);if(price&&!input.maxPrice)input.maxPrice=Number(price[1]);
-  const state:SearchState={id:crypto.randomUUID(),query:input.query||'Image search',queryKind:input.query?'text':'image',status:'queued',demo:!liveMode(),filters:{maxPrice:input.maxPrice,condition:input.condition,marketplace:input.marketplace,location:input.location,radius:input.radius},listings:[],events:[],runs:(input.marketplace==='all'?['facebook','ebay','kijiji'] as const:[input.marketplace]).map(marketplace=>({marketplace,status:'queued',message:'Waiting to start'}))};
+  const searchId=crypto.randomUUID();
+  const initialListings=input.importedListing?[{...input.importedListing,searchId,imported:true}]:[];
+  const initialEvents=input.importedListing?[{id:crypto.randomUUID(),time:Date.now(),kind:'success' as const,message:`Imported posting: ${input.importedListing.title}`,marketplace:input.importedListing.marketplace}]:[];
+  const state:SearchState={id:searchId,query:input.query||'Image search',queryKind:input.query?'text':'image',status:'queued',demo:!liveMode(),filters:{maxPrice:input.maxPrice,condition:input.condition,marketplace:input.marketplace,location:input.location,radius:input.radius},listings:initialListings,events:initialEvents,runs:(input.marketplace==='all'?['facebook','ebay','kijiji'] as const:[input.marketplace]).map(marketplace=>({marketplace,status:'queued',message:'Waiting to start'}))};
   state.filters!.currency=input.currency??'USD';
   await saveState(user,state);
   if(!state.demo){

@@ -15,23 +15,31 @@ import {
   ArrowUpRight,
   Bookmark,
   Check,
-  CheckCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Columns3,
   Command,
   Compass,
+  Download,
   History,
   ImagePlus,
   Info,
+  Layers,
   ListFilter,
   Loader2,
+  LogIn,
+  LogOut,
   MapPin,
   Plus,
+  RefreshCw,
+  Scale,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Star,
+  Truck,
   X,
 } from "lucide-react";
 import type {
@@ -39,17 +47,21 @@ import type {
   RankedListing,
   SearchState,
   StreamEvent,
+  Listing,
 } from "@/lib/schemas";
 import { deduplicate, rankListings } from "@/lib/scoring";
+import { detectListingUrl } from "@/lib/marketplaces/shared";
 import {
   readStream,
   readJsonResponse,
   RequestError,
 } from "@/lib/client-stream";
 import { photo } from "@/lib/demo/fixtures";
-import { AgentPanel, BrowserView } from "./agent-panel";
+import { AgentPanel, BrowserView, KeepGoingStopButton } from "./agent-panel";
 import { ListingCard, MarketplaceBadge, DealScore, money } from "./listings";
-import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver } from './workspace-negotiations';
+import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver, startNegotiationFor } from './workspace-negotiations';
+import { DealReviewModal } from './deal-review';
+import { defaultNegotiationSettings } from '@/lib/negotiation/defaults';
 import { PlatformLogo } from "./platform-logos";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
@@ -73,7 +85,7 @@ function AuthControl() {
     <div className="auth-controls">
       <SignInButton mode="modal">
         <Button variant="outline" size="sm" className="sign-in-btn">
-          Sign in
+          Log in
         </Button>
       </SignInButton>
       <SignUpButton mode="modal">
@@ -130,6 +142,18 @@ const examples = [
 
 const ALL_MARKETS: Marketplace[] = ["kijiji", "ebay", "facebook"];
 
+const MARKETPLACE_LABELS: Record<Marketplace, string> = {
+  facebook: "Facebook",
+  ebay: "eBay",
+  kijiji: "Kijiji",
+};
+
+const MARKETPLACE_FULL_NAMES: Record<Marketplace, string> = {
+  facebook: "Facebook Marketplace",
+  ebay: "eBay",
+  kijiji: "Kijiji",
+};
+
 export function ShoppingApp({
   demo,
   initialId,
@@ -148,7 +172,7 @@ export function ShoppingApp({
   const [maxPrice, setMaxPrice] = useState("");
   const [condition, setCondition] = useState("any");
   const [market, setMarket] = useState("all");
-  const [location, setLocation] = useState("San Francisco");
+  const [location, setLocation] = useState("Toronto");
   const [radius, setRadius] = useState(25);
   const [filters, setFilters] = useState(false);
   const [sort, setSort] = useState("best");
@@ -157,7 +181,12 @@ export function ShoppingApp({
   const [selectedSnapshot, setSelected] = useState<RankedListing | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState('listings');
   const [negotiatedIds,setNegotiatedIds]=useState<string[]>([]);
-  const [currency, setCurrency] = useState('USD');
+  const [reviewOpen,setReviewOpen]=useState(false);
+  const [reviewShownFor,setReviewShownFor]=useState<string|null>(null);
+  const [reviewDecisions,setReviewDecisions]=useState<Record<string,'liked'|'rejected'>>({});
+  const [reviewBusyId,setReviewBusyId]=useState<string|null>(null);
+  const [reviewErrors,setReviewErrors]=useState<Record<string,string>>({});
+  const [currency, setCurrency] = useState('CAD');
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [negotiate, setNegotiate] = useState<RankedListing | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
@@ -181,6 +210,25 @@ export function ShoppingApp({
     kijiji: false,
   });
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [agentPanelWidth, setAgentPanelWidth] = useState<number | null>(null);
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+
+  // Decision gate state
+  const [decisionOpen, setDecisionOpen] = useState(false);
+  const [decisionListings, setDecisionListings] = useState<RankedListing[]>([]);
+  const [decisionPaused, setDecisionPaused] = useState(false);
+  const [resumedSearching, setResumedSearching] = useState(false);
+  const [pausedMarkets, setPausedMarkets] = useState<Set<Marketplace>>(new Set());
+  const pausedMarketsRef = useRef<Set<Marketplace>>(new Set());
+  pausedMarketsRef.current = pausedMarkets;
+  const pauseRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
+  const roundStartCount = useRef(0);
+  const importedListingRef = useRef<Listing | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const lastResultAt = useRef(0);
 
   const isMarketConnected = (m: Marketplace) =>
     m === "facebook" ? connectedMarkets.facebook || connected : connectedMarkets[m];
@@ -194,6 +242,40 @@ export function ShoppingApp({
   const input = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
+  const activeAgentSearches = useRef<Map<Marketplace, AbortController>>(new Map());
+
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only trigger on the divider bar itself, not the toggle button
+    if ((e.target as HTMLElement).closest('.panel-toggle-btn')) return;
+    e.preventDefault();
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    const workspace = workspaceRef.current;
+    const currentWidth = agentPanelWidth ??
+      (workspace ? workspace.offsetWidth * 0.42 : 420);
+    dragStartWidth.current = currentWidth;
+    document.body.classList.add('is-resizing');
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return;
+      const dx = dragStartX.current - ev.clientX; // dragging left expands agent panel
+      const workspace = workspaceRef.current;
+      const maxWidth = workspace ? workspace.offsetWidth * 0.70 : 800;
+      const minWidth = 260;
+      const newWidth = Math.min(maxWidth, Math.max(minWidth, dragStartWidth.current + dx));
+      setAgentPanelWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      isDragging.current = false;
+      document.body.classList.remove('is-resizing');
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [agentPanelWidth]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -249,11 +331,105 @@ export function ShoppingApp({
       }
     };
     window.addEventListener("keydown", key);
+    const agentSearches = activeAgentSearches.current;
     return () => {
       window.removeEventListener("keydown", key);
       abort.current?.abort();
+      agentSearches.forEach((ctrl) => ctrl.abort());
+      agentSearches.clear();
     };
   }, []);
+
+  // Decision gate: fire when 5 new results arrive in this round OR 10 s elapse with no new result
+  useEffect(() => {
+    if (decisionOpen || state?.demo) return; // already showing or simulated demo search
+    const ranked = rankListings(state?.listings || []);
+    const current = ranked.length;
+    if (current === 0) return;
+    // track the timestamp of the most recent listing
+    lastResultAt.current = Date.now();
+    // 5-result trigger
+    const newThisRound = current - roundStartCount.current;
+    if (newThisRound >= 5) {
+      abort.current?.abort();
+      activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+      activeAgentSearches.current.clear();
+      if (pauseRef.current) {
+        pauseRef.current.resolve();
+        pauseRef.current = null;
+      }
+      setBusy(false);
+      setDecisionPaused(true);
+      setDecisionListings(ranked.slice(0, 5));
+      setDecisionOpen(true);
+      setState((s) => {
+        if (!s) return s;
+        return {
+          ...s,
+          status: s.listings.length > 0 ? "complete" : "failed",
+          runs: s.runs.map((r) =>
+            r.status === "searching" || r.status === "queued"
+              ? { ...r, status: "paused" as const, message: "Search stopped at decision gate" }
+              : r,
+          ),
+          events: [
+            ...s.events,
+            {
+              id: crypto.randomUUID(),
+              time: Date.now(),
+              kind: "action",
+              message: "Search stopped at decision gate",
+            },
+          ],
+        };
+      });
+      return;
+    }
+    // 10-second idle trigger — only while an active search is running
+    const isActive = Boolean(state && ['queued','searching','ranking'].includes(state.status));
+    if (!isActive) return;
+    const id = setInterval(() => {
+      if (Date.now() - lastResultAt.current >= 10_000 && !decisionOpen) {
+        const snap = rankListings(state?.listings || []);
+        if (snap.length > 0) {
+          abort.current?.abort();
+          activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+          activeAgentSearches.current.clear();
+          if (pauseRef.current) {
+            pauseRef.current.resolve();
+            pauseRef.current = null;
+          }
+          setBusy(false);
+          setDecisionPaused(true);
+          setDecisionListings(snap.slice(0, 5));
+          setDecisionOpen(true);
+          setState((s) => {
+            if (!s) return s;
+            return {
+              ...s,
+              status: s.listings.length > 0 ? "complete" : "failed",
+              runs: s.runs.map((r) =>
+                r.status === "searching" || r.status === "queued"
+                  ? { ...r, status: "paused" as const, message: "Search stopped at decision gate" }
+                  : r,
+              ),
+              events: [
+                ...s.events,
+                {
+                  id: crypto.randomUUID(),
+                  time: Date.now(),
+                  kind: "action",
+                  message: "Search stopped at decision gate",
+                },
+              ],
+            };
+          });
+        }
+      }
+    }, 1_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.listings?.length, state?.status]);
 
   const restoredId = useRef<string | null>(null);
   const updateLive = useCallback((s: SearchState) => {
@@ -272,12 +448,53 @@ export function ShoppingApp({
     }
   }, []);
 
-  const applyEvent = (event: StreamEvent) => {
+  const applyEvent = async (event: StreamEvent, originMarket?: Marketplace) => {
+    if (pauseRef.current) {
+      await pauseRef.current.promise;
+    }
+    if (event.type === "listing" && pausedMarketsRef.current.has(event.listing.marketplace)) {
+      return;
+    }
+    if (event.type === "event" && event.event.marketplace && pausedMarketsRef.current.has(event.event.marketplace)) {
+      return;
+    }
+    if (event.type === "run" && pausedMarketsRef.current.has(event.run.marketplace)) {
+      return;
+    }
     if (event.type === "state") {
+      if (originMarket) {
+        setState((prev) => {
+          if (!prev) return event.state;
+          const mergedRuns = [...prev.runs];
+          for (const r of event.state.runs) {
+            const idx = mergedRuns.findIndex((x) => x.marketplace === r.marketplace);
+            if (idx >= 0) mergedRuns[idx] = r;
+            else mergedRuns.push(r);
+          }
+          return {
+            ...prev,
+            runs: mergedRuns,
+            listings:
+              event.state.listings.length > 0
+                ? event.state.listings.reduce((acc, l) => deduplicate(acc, l), prev.listings)
+                : prev.listings,
+          };
+        });
+        return;
+      }
+      if (importedListingRef.current) {
+        event.state.listings = deduplicate(event.state.listings, importedListingRef.current);
+      }
       setState(event.state);
       restoredId.current = event.state.id;
-      if (event.state.filters?.maxPrice)
-        setMaxPrice(String(event.state.filters.maxPrice));
+      if (event.state.filters) {
+        setMaxPrice(event.state.filters.maxPrice ? String(event.state.filters.maxPrice) : "");
+        setCondition(event.state.filters.condition);
+        setMarket(event.state.filters.marketplace);
+        setLocation(event.state.filters.location);
+        setRadius(event.state.filters.radius);
+        setCurrency(event.state.filters.currency ?? "USD");
+      }
       window.history.replaceState(null, "", `/search/${event.state.id}`);
       return;
     }
@@ -305,6 +522,12 @@ export function ShoppingApp({
             ),
           };
         case "status":
+          if (originMarket) {
+            const otherSearching = s.runs.some(
+              (r) => r.marketplace !== originMarket && r.status === "searching",
+            );
+            return otherSearching ? s : { ...s, status: event.status };
+          }
           return { ...s, status: event.status };
         case "identification":
           return { ...s, identification: event.identification };
@@ -316,8 +539,356 @@ export function ShoppingApp({
     });
   };
 
+  const handlePauseAgent = useCallback((m: Marketplace) => {
+    const ctrl = activeAgentSearches.current.get(m);
+    if (ctrl) {
+      ctrl.abort();
+      activeAgentSearches.current.delete(m);
+    }
+    setPausedMarkets((prev) => {
+      const next = new Set(prev);
+      next.add(m);
+      return next;
+    });
+    setState((s) => {
+      if (!s) return s;
+      return {
+        ...s,
+        runs: s.runs.map((r) =>
+          r.marketplace === m
+            ? { ...r, status: "paused" as const, message: "Search paused by user" }
+            : r,
+        ),
+        events: [
+          ...s.events,
+          {
+            id: crypto.randomUUID(),
+            time: Date.now(),
+            kind: "action",
+            marketplace: m,
+            message: `Paused ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook Marketplace"} search`,
+          },
+        ],
+      };
+    });
+  }, []);
+
+  const handlePlayAgent = useCallback(
+    async (m: Marketplace) => {
+      setPausedMarkets((prev) => {
+        const next = new Set(prev);
+        next.delete(m);
+        return next;
+      });
+
+      setState((s) => {
+        if (!s) {
+          return {
+            id: crypto.randomUUID(),
+            query: query.trim() || "Search",
+            queryKind: "text",
+            status: "searching",
+            demo: false,
+            listings: [],
+            events: [
+              {
+                id: crypto.randomUUID(),
+                time: Date.now(),
+                kind: "action",
+                marketplace: m,
+                message: `Started ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook Marketplace"} search`,
+              },
+            ],
+            runs: [
+              {
+                marketplace: m,
+                status: "searching" as const,
+                message: `Searching ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook"}`,
+              },
+            ],
+          };
+        }
+        const existingRun = s.runs.find((r) => r.marketplace === m);
+        const updatedRuns = existingRun
+          ? s.runs.map((r) =>
+              r.marketplace === m
+                ? {
+                    ...r,
+                    status: "searching" as const,
+                    message: `Searching ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook"}`,
+                  }
+                : r,
+            )
+          : [
+              ...s.runs,
+              {
+                marketplace: m,
+                status: "searching" as const,
+                message: `Searching ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook"}`,
+              },
+            ];
+        return {
+          ...s,
+          runs: updatedRuns,
+          events: [
+            ...s.events,
+            {
+              id: crypto.randomUUID(),
+              time: Date.now(),
+              kind: "action",
+              marketplace: m,
+              message: `Resumed ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook Marketplace"} search`,
+            },
+          ],
+        };
+      });
+
+      if (pauseRef.current) {
+        pauseRef.current.resolve();
+        pauseRef.current = null;
+      }
+
+      const searchQuery = query.trim() || state?.query || "";
+      if (!activeAgentSearches.current.has(m) && searchQuery) {
+        const singleAbort = new AbortController();
+        activeAgentSearches.current.set(m, singleAbort);
+        try {
+          await readStream<StreamEvent>(
+            await fetch("/api/search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                query: searchQuery,
+                image,
+                maxPrice: maxPrice ? Number(maxPrice) : undefined,
+                condition,
+                marketplace: m,
+                location,
+                radius,
+                currency,
+              }),
+              signal: singleAbort.signal,
+            }),
+            (ev) => applyEvent(ev, m),
+          );
+        } catch (e) {
+          if (e instanceof Error && e.name !== "AbortError") {
+            console.error(`Search error for ${m}:`, e);
+          }
+        } finally {
+          activeAgentSearches.current.delete(m);
+          setState((s) => {
+            if (!s) return s;
+            return {
+              ...s,
+              runs: s.runs.map((r) =>
+                r.marketplace === m && r.status === "searching"
+                  ? { ...r, status: "complete" as const, message: "Search complete" }
+                  : r,
+              ),
+            };
+          });
+        }
+      }
+    },
+    [query, state?.query, image, maxPrice, condition, location, radius, currency],
+  );
+
+  const handleStopSearch = useCallback(() => {
+    abort.current?.abort();
+    activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+    activeAgentSearches.current.clear();
+    const activePause = pauseRef.current as { resolve: () => void } | null;
+    if (activePause) {
+      activePause.resolve();
+      pauseRef.current = null;
+    }
+    setBusy(false);
+    setDecisionPaused(true);
+    setResumedSearching(false);
+    setState((s) => {
+      if (!s) return s;
+      return {
+        ...s,
+        status: s.listings.length > 0 ? "complete" : "failed",
+        runs: s.runs.map((r) =>
+          r.status === "searching" || r.status === "queued"
+            ? { ...r, status: "paused" as const, message: "Search stopped by user" }
+            : r,
+        ),
+        events: [
+          ...s.events,
+          {
+            id: crypto.randomUUID(),
+            time: Date.now(),
+            kind: "action",
+            message: "Search stopped by user",
+          },
+        ],
+      };
+    });
+  }, []);
+
+  const handleKeepGoing = useCallback(() => {
+    if (pauseRef.current) {
+      pauseRef.current.resolve();
+      pauseRef.current = null;
+    }
+    setDecisionPaused(false);
+    setResumedSearching(true);
+    roundStartCount.current = state?.listings?.length || 0;
+    lastResultAt.current = Date.now();
+    setDecisionOpen(false);
+    setPausedMarkets(new Set());
+    setState((s) => {
+      if (!s) return s;
+      return {
+        ...s,
+        runs: s.runs.map((r) =>
+          r.status === "paused"
+            ? { ...r, status: "searching" as const, message: `Searching ${r.marketplace}` }
+            : r,
+        ),
+      };
+    });
+    const paused =
+      state?.runs
+        .filter((r) => r.status === "paused")
+        .map((r) => r.marketplace) || [];
+    for (const m of paused) {
+      if (!activeAgentSearches.current.has(m)) {
+        handlePlayAgent(m);
+      }
+    }
+  }, [state?.listings?.length, state?.runs, handlePlayAgent]);
+
   async function search(text = query) {
     if (busy || (!text.trim() && !image)) return;
+    const detected = detectListingUrl(text);
+    if (detected) {
+      if (account.required && !account.signedIn) {
+        setError(
+          account.loaded
+            ? "Sign in to use your shopping agent."
+            : "Your account is loading. Please try again in a moment.",
+        );
+        if (account.loaded) account.openSignIn();
+        return;
+      }
+      setIsImporting(true);
+      setBusy(true);
+      setError("");
+      setSavedOnly(false);
+      setActiveTab("discover");
+      setSelected(null);
+      setState(null);
+      setDecisionOpen(false);
+      roundStartCount.current = 0;
+      lastResultAt.current = Date.now();
+      setActiveMarket(detected.marketplace);
+      abort.current = new AbortController();
+
+      let importedItem: Listing | null = null;
+      try {
+        const inspectRes = await fetch("/api/inspect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: detected.url, marketplace: detected.marketplace }),
+          signal: abort.current.signal,
+        });
+        if (!inspectRes.ok) {
+          const err = await inspectRes.json().catch(() => ({}));
+          throw new Error(err.error || `Could not import ${detected.marketplace} posting.`);
+        }
+        await readStream<Listing & { error?: string; debugUrl?: string }>(inspectRes, (item) => {
+          if (item.error) throw new Error(item.error);
+          if (item.title && typeof item.price === "number") {
+            importedItem = { ...item, imported: true };
+          }
+        });
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          setIsImporting(false);
+          setBusy(false);
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Failed to import listing.");
+        setIsImporting(false);
+        setBusy(false);
+        return;
+      }
+
+      if (!importedItem) {
+        setError("Could not extract listing information from this URL.");
+        setIsImporting(false);
+        setBusy(false);
+        return;
+      }
+
+      setIsImporting(false);
+      const importedListing: Listing = importedItem;
+      importedListingRef.current = importedListing;
+      const searchTitle = importedListing.title;
+      setQuery(searchTitle);
+      if (searchTitle.trim()) {
+        setRecentSearches((prev) => [searchTitle.trim(), ...prev.filter((q) => q !== searchTitle.trim())].slice(0, 8));
+      }
+
+      try {
+        await readStream<StreamEvent>(
+          await fetch("/api/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: searchTitle,
+              maxPrice: maxPrice ? Number(maxPrice) : undefined,
+              condition,
+              marketplace: market,
+              location,
+              radius,
+              currency,
+              importedListing,
+            }),
+            signal: abort.current.signal,
+          }),
+          applyEvent,
+        );
+      } catch (e) {
+        if (e instanceof RequestError) {
+          if (e.status === 401) {
+            setError(
+              account.loaded
+                ? "Sign in to use your shopping agent."
+                : "Account check failed. Try again in a moment.",
+            );
+            if (account.loaded) account.openSignIn();
+          } else setError(e.message);
+        } else if (e instanceof Error && e.name !== "AbortError") {
+          setError(e.message || "Could not complete search.");
+        }
+      } finally {
+        const activePause = pauseRef.current as { resolve: () => void } | null;
+        if (activePause) {
+          activePause.resolve();
+          pauseRef.current = null;
+        }
+        setDecisionPaused(false);
+        setResumedSearching(false);
+        setBusy(false);
+      }
+      return;
+    }
+    importedListingRef.current = null;
+    if (pauseRef.current) {
+      pauseRef.current.resolve();
+      pauseRef.current = null;
+    }
+    abort.current?.abort();
+    activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+    activeAgentSearches.current.clear();
+    setDecisionPaused(false);
+    setResumedSearching(false);
+    setPausedMarkets(new Set());
     setQuery(text);
     if (text.trim()) {
       setRecentSearches((prev) => [text.trim(), ...prev.filter((q) => q !== text.trim())].slice(0, 8));
@@ -337,6 +908,9 @@ export function ShoppingApp({
     setActiveTab("discover");
     setSelected(null);
     setState(null);
+    setDecisionOpen(false);
+    roundStartCount.current = 0;
+    lastResultAt.current = Date.now();
     setActiveMarket(
       market === "ebay" ? "ebay" : market === "kijiji" ? "kijiji" : market === "facebook" ? "facebook" : "all",
     );
@@ -374,6 +948,13 @@ export function ShoppingApp({
         setError(e.message || "Could not complete search.");
       }
     } finally {
+      const activePause = pauseRef.current as { resolve: () => void } | null;
+      if (activePause) {
+        activePause.resolve();
+        pauseRef.current = null;
+      }
+      setDecisionPaused(false);
+      setResumedSearching(false);
       setBusy(false);
     }
   }
@@ -488,12 +1069,57 @@ export function ShoppingApp({
     }
   }
 
+  function disconnectMarket(marketToDisconnect: Marketplace) {
+    setConnectionBusy(true);
+    try {
+      setConnectedMarkets((prev) => ({
+        ...prev,
+        [marketToDisconnect]: false,
+      }));
+      if (marketToDisconnect === "facebook") {
+        setConnected(false);
+      }
+    } finally {
+      setConnectionBusy(false);
+    }
+  }
+
   const ranked = rankListings(state?.listings || []);
   const selected=ranked.find(l=>l.id===selectedSnapshot?.id)??selectedSnapshot;
+  const topFacebookDeals = ranked.filter((l) => l.marketplace === "facebook").slice(0, 5);
+  useEffect(() => {
+    if (!state || reviewShownFor === state.id || topFacebookDeals.length === 0) return;
+    // Facebook discovery can keep scrolling up new listings indefinitely (no cumulative cap in
+    // lib/agents/discovery.ts), so state.status can stay 'searching' forever — don't gate the
+    // review on full completion. Show it as soon as there's a full 5 to review, or once the
+    // search settles one way or another with at least one Facebook listing.
+    const searchSettled = state.status === "complete" || state.status === "failed";
+    if (searchSettled || topFacebookDeals.length >= 5) {
+      setReviewShownFor(state.id);
+      setReviewDecisions({});
+      setReviewErrors({});
+      setReviewOpen(true);
+    }
+  }, [state, reviewShownFor, topFacebookDeals.length]);
+  async function likeDeal(listing: RankedListing) {
+    setReviewBusyId(listing.id);
+    setReviewErrors((e) => { const next = { ...e }; delete next[listing.id]; return next; });
+    try {
+      await startNegotiationFor(listing, defaultNegotiationSettings(listing));
+      setReviewDecisions((d) => ({ ...d, [listing.id]: "liked" }));
+      setNegotiatedIds((ids) => [...new Set([...ids, listing.id])]);
+    } catch (e) {
+      setReviewErrors((err) => ({ ...err, [listing.id]: (e as Error).message }));
+    } finally {
+      setReviewBusyId(null);
+    }
+  }
+  function rejectDeal(listing: RankedListing) {
+    setReviewDecisions((d) => ({ ...d, [listing.id]: "rejected" }));
+  }
   async function findMore(listingId?:string){if(!state)return;setDiscoveryBusy(true);try{const result=await readJsonResponse<{demo?:boolean}>(await fetch('/api/workspace/discovery',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspaceId:state.id,listingId})}));if(result.demo)setError('Demo mode has no additional marketplace results.');}catch(e){setError((e as Error).message);}finally{setDiscoveryBusy(false);}}
   let listings = ranked.filter(
     (l) =>
-      l.currency === currency &&
       (market === "all" || l.marketplace === market) &&
       (!maxPrice || l.price <= Number(maxPrice)) &&
       (condition === "any" || l.condition === condition) &&
@@ -507,6 +1133,7 @@ export function ShoppingApp({
   if (sort === "newest")
     listings = [...listings].sort((a, b) => b.scrapedAt - a.scrapedAt);
   const best = listings[0];
+  const filteredOutCount = Math.max(0, ranked.length - listings.length);
 
   return (
     <div className="app-shell">
@@ -676,9 +1303,19 @@ export function ShoppingApp({
               aria-label="What are you looking for?"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Try ‘Sony WH-1000XM5 under $250’"
+              placeholder="Search with prompt or import with URL…"
               maxLength={300}
             />
+            {(() => {
+              const detectedPosting = detectListingUrl(query);
+              if (!detectedPosting) return null;
+              return (
+                <div className="search-detected-pill" title={`Import ${detectedPosting.marketplace} listing`}>
+                  <PlatformLogo market={detectedPosting.marketplace} size={13} />
+                  <span>Import from {detectedPosting.marketplace === "ebay" ? "eBay" : detectedPosting.marketplace === "kijiji" ? "Kijiji" : "Facebook"}</span>
+                </div>
+              );
+            })()}
             <kbd className="search-shortcut">
               <Command size={10} /> K
             </kbd>
@@ -700,16 +1337,29 @@ export function ShoppingApp({
               onChange={(e) => void upload(e.target.files?.[0])}
             />
 
-            <Button
-              type="submit"
-              aria-label="Find it"
-              disabled={busy || (!query.trim() && !image)}
-              className="search-submit-btn"
-            >
-              {busy && <Loader2 size={15} className="spin" />}
-              <span>{busy ? "Searching" : "Find"}</span>
-              {!busy && <ArrowRight size={15} />}
-            </Button>
+            {(() => {
+              const detectedPosting = detectListingUrl(query);
+              return (
+                <Button
+                  type="submit"
+                  aria-label={detectedPosting ? "Import and compare listing" : "Find it"}
+                  disabled={busy || (!query.trim() && !image)}
+                  className={`search-submit-btn ${detectedPosting ? "import-mode" : ""}`}
+                >
+                  {busy && <Loader2 size={15} className="spin" />}
+                  <span>
+                    {busy
+                      ? isImporting
+                        ? "Importing"
+                        : "Searching"
+                      : detectedPosting
+                        ? "Import & Compare"
+                        : "Find"}
+                  </span>
+                  {!busy && (detectedPosting ? <Download size={15} /> : <ArrowRight size={15} />)}
+                </Button>
+              );
+            })()}
           </form>
 
           {image && (
@@ -757,7 +1407,7 @@ export function ShoppingApp({
                 aria-label="Maximum price"
                 type="number"
                 min="1"
-                placeholder="Any price"
+                placeholder="Max price: Any"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(e.target.value)}
               />
@@ -830,7 +1480,7 @@ export function ShoppingApp({
             </div>
           )}
         </section>
-        {state&&<div className="workspace-tabs" role="tablist" aria-label="Workspace views" onKeyDown={e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const next=workspaceTab==='listings'?'negotiations':'listings';setWorkspaceTab(next);(e.currentTarget.querySelectorAll('[role="tab"]')[next==='listings'?0:1] as HTMLButtonElement).focus();}}}><Button role="tab" aria-selected={workspaceTab==='listings'} onClick={()=>setWorkspaceTab('listings')}>Listings</Button><Button role="tab" aria-selected={workspaceTab==='negotiations'} onClick={()=>setWorkspaceTab('negotiations')}>Negotiations</Button><Button variant="outline" disabled={discoveryBusy||requestBusy} onClick={()=>void findMore()}>{discoveryBusy?'Queuing…':'Find more'}</Button></div>}
+        {state&&<div className="workspace-tabs" role="tablist" aria-label="Workspace views" onKeyDown={e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const next=workspaceTab==='listings'?'negotiations':'listings';setWorkspaceTab(next);(e.currentTarget.querySelectorAll('[role="tab"]')[next==='listings'?0:1] as HTMLButtonElement).focus();}}}><Button role="tab" aria-selected={workspaceTab==='listings'} onClick={()=>setWorkspaceTab('listings')}>Listings</Button><Button role="tab" aria-selected={workspaceTab==='negotiations'} onClick={()=>setWorkspaceTab('negotiations')}>Negotiations</Button>{topFacebookDeals.length>0&&<Button variant="outline" onClick={()=>setReviewOpen(true)}>Top deals</Button>}<Button variant="outline" disabled={discoveryBusy||requestBusy} onClick={()=>void findMore()}>{discoveryBusy?'Queuing…':'Find more'}</Button></div>}
         {state&&workspaceTab==='negotiations'?<WorkspaceNegotiations workspaceId={state.id} listings={state.listings} demo={state.demo}/>:<>
         <div className="mobile-tabs">
           <button
@@ -847,7 +1497,7 @@ export function ShoppingApp({
           </button>
         </div>
 
-        <div className={`workspace show-${mobileTab} ${panelCollapsed ? "panel-collapsed" : ""}`}>
+        <div ref={workspaceRef} className={`workspace show-${mobileTab} ${panelCollapsed ? "panel-collapsed" : ""}`}>
           <section className="results-panel">
             <div className="results-nav">
               <div className="tab-pill-group">
@@ -887,18 +1537,55 @@ export function ShoppingApp({
               </div>
 
               {state ? (
-                <label className="sort-control">
-                  <ArrowDownUp size={13} />
-                  <select
-                    aria-label="Sort listings"
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                  >
-                    <option value="best">Best deals first</option>
-                    <option value="price">Lowest total price</option>
-                    <option value="newest">Recently found</option>
-                  </select>
-                </label>
+                <div className="results-nav-right">
+                  {ranked.length >= 5 && (
+                    <button
+                      type="button"
+                      className="decide-btn"
+                      onClick={() => {
+                        abort.current?.abort();
+                        activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+                        activeAgentSearches.current.clear();
+                        if (pauseRef.current) {
+                          pauseRef.current.resolve();
+                          pauseRef.current = null;
+                        }
+                        setBusy(false);
+                        setDecisionPaused(true);
+                        setDecisionListings(ranked.slice(0, 5));
+                        setDecisionOpen(true);
+                        setState((s) => {
+                          if (!s) return s;
+                          return {
+                            ...s,
+                            status: s.listings.length > 0 ? "complete" : "failed",
+                            runs: s.runs.map((r) =>
+                              r.status === "searching" || r.status === "queued"
+                                ? { ...r, status: "paused" as const, message: "Search stopped by user decision" }
+                                : r,
+                            ),
+                          };
+                        });
+                      }}
+                      aria-label="Side-by-side comparison"
+                    >
+                      <Scale size={14} />
+                      Decide
+                    </button>
+                  )}
+                  <label className="sort-control">
+                    <ArrowDownUp size={13} />
+                    <select
+                      aria-label="Sort listings"
+                      value={sort}
+                      onChange={(e) => setSort(e.target.value)}
+                    >
+                      <option value="best">Best deals first</option>
+                      <option value="price">Lowest total price</option>
+                      <option value="newest">Recently found</option>
+                    </select>
+                  </label>
+                </div>
               ) : null}
             </div>
 
@@ -997,14 +1684,18 @@ export function ShoppingApp({
                 {best && (
                   <div className="result-summary">
                     <span>
-                      {busy ? (
-                        <i className="working-dot" />
+                      {busy && !decisionPaused ? (
+                        <>
+                          <i className="working-dot" /> Finding your shortlist
+                        </>
                       ) : (
-                        <CheckCheck size={14} />
-                      )}{" "}
-                      {busy
-                        ? "Finding your shortlist"
-                        : "Your shortlist is ready"}
+                        <>
+                          <ListFilter size={13} />
+                          {filteredOutCount === 1
+                            ? "1 result filtered out"
+                            : `${filteredOutCount} results filtered out`}
+                        </>
+                      )}
                     </span>
                     <span>
                       From{" "}
@@ -1107,7 +1798,13 @@ export function ShoppingApp({
             )}
           </section>
 
-          <div className="workspace-divider">
+          <div
+            className="workspace-divider"
+            onMouseDown={handleDividerMouseDown}
+            role="separator"
+            aria-label="Drag to resize panels"
+            title="Drag to resize"
+          >
             <button
               type="button"
               className="panel-toggle-btn"
@@ -1126,6 +1823,13 @@ export function ShoppingApp({
             onConnect={() => setConnectionOpen(true)}
             isCollapsed={panelCollapsed}
             onExpand={() => setPanelCollapsed(false)}
+            decisionPaused={decisionPaused}
+            resumedSearching={resumedSearching}
+            onKeepGoing={handleKeepGoing}
+            onStopSearch={handleStopSearch}
+            onPlayAgent={handlePlayAgent}
+            onPauseAgent={handlePauseAgent}
+            style={!panelCollapsed && agentPanelWidth ? { flex: `0 0 ${agentPanelWidth}px`, width: `${agentPanelWidth}px` } : undefined}
           />
         </div>
         </>}
@@ -1198,10 +1902,12 @@ export function ShoppingApp({
             {selected.inspectionStatus&&<p className="field-hint">Details: {selected.inspectionStatus}{selected.inspectionError?` · ${selected.inspectionError}`:''}</p>}
             <div className="detail-facts">
               <span>
-                Seller<strong>{selected.sellerName || "Not listed"}</strong>
+                <span className="fact-label">Seller</span>
+                <strong>{selected.sellerName || "Not listed"}</strong>
               </span>
               <span>
-                Location<strong>{selected.location || "Not listed"}</strong>
+                <span className="fact-label">Location</span>
+                <strong>{selected.location || "Not listed"}</strong>
               </span>
             </div>
             <div className="detail-actions">
@@ -1235,7 +1941,7 @@ export function ShoppingApp({
                 <ArrowUpRight size={14} />
               </a>
             </div>
-            {inspectUrl && <BrowserView url={inspectUrl} />}{" "}
+            {inspectUrl && <BrowserView url={inspectUrl} />}
             {inspectText && (
               <div className="inspection-result">
                 <strong>
@@ -1262,6 +1968,23 @@ export function ShoppingApp({
         )}
       </Modal>
 
+      {/* Deal Review Modal */}
+      <DealReviewModal
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        listings={topFacebookDeals}
+        decisions={reviewDecisions}
+        busyId={reviewBusyId}
+        errors={reviewErrors}
+        onLike={(listing) => void likeDeal(listing)}
+        onReject={rejectDeal}
+        onConnect={() => {
+          setReviewOpen(false);
+          setConnectionMarket("facebook");
+          setConnectionOpen(true);
+        }}
+      />
+
       {/* Connection Modal */}
       <Modal
         open={connectionOpen}
@@ -1280,53 +2003,130 @@ export function ShoppingApp({
                 type="button"
                 disabled={!!connectionUrl || connectionBusy}
                 onClick={() => setConnectionMarket(m)}
-                className={connectionMarket === m ? "selected" : ""}
+                className={`tone-market-tab ${connectionMarket === m ? "selected" : ""} ${isMarketConnected(m) ? "is-connected" : ""}`}
               >
                 <MarketplaceBadge marketplace={m} />
+                {isMarketConnected(m) && (
+                  <span className="tab-connected-pill">
+                    <Check size={10} />
+                    Connected
+                  </span>
+                )}
               </button>
             ))}
           </div>
-          {demo ? (
+
+          {isMarketConnected(connectionMarket) ? (
+            <div className="connection-card connected-state">
+              <div className="connection-status-pill">
+                <Check size={13} />
+                <span>Account connected</span>
+              </div>
+              <div className="connection-status-icon-wrap">
+                <PlatformLogo market={connectionMarket} size={40} />
+              </div>
+              <h3>{MARKETPLACE_FULL_NAMES[connectionMarket]}</h3>
+              <p>
+                {demo
+                  ? "Your demo account profile is active. Automated searches and offers are enabled for this marketplace."
+                  : "Your secure Steel browser session is active. Haggleface can search and draft offers on your behalf."}
+              </p>
+              <div className="connection-actions-row">
+                <Button
+                  variant="outline"
+                  className="connection-logout-btn"
+                  disabled={connectionBusy}
+                  onClick={() => disconnectMarket(connectionMarket)}
+                >
+                  <LogOut size={14} />
+                  <span>Log out of {MARKETPLACE_LABELS[connectionMarket]}</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="connection-reconnect-btn"
+                  disabled={connectionBusy}
+                  onClick={() => void connect(demo ? "save" : "open")}
+                >
+                  <RefreshCw size={13} />
+                  <span>Reconnect</span>
+                </Button>
+              </div>
+            </div>
+          ) : demo ? (
             <div className="connection-demo">
-              <ShieldCheck size={34} />
+              <ShieldCheck size={36} className="connection-shield-icon" />
               <h3>Your account stays yours.</h3>
               <p>
                 This is demo mode. Connecting simulates a saved marketplace
                 profile. Add Steel, Clerk, and Convex credentials to sign in to
                 a real account.
               </p>
-              <Button onClick={() => void connect("save")}>
-                Try demo connection
+              <Button
+                className="connection-login-btn"
+                disabled={connectionBusy}
+                onClick={() => void connect("save")}
+              >
+                <LogIn size={15} />
+                <span>Log in to {MARKETPLACE_LABELS[connectionMarket]}</span>
+                <span className="btn-subtext">· Try demo connection</span>
                 <ArrowRight size={14} />
               </Button>
             </div>
           ) : connectionUrl ? (
-            <>
+            <div className="connection-live-interactive">
               <BrowserView url={connectionUrl} interactive />
               <p className="field-hint">
                 Finish signing in above, then save your browser profile.
                 Sessions expire after 5 minutes.
               </p>
-              <Button
-                disabled={connectionBusy}
-                onClick={() => void connect("save")}
-              >
-                I’m signed in · Save connection
-              </Button>
-            </>
+              <div className="connection-actions-row">
+                <Button
+                  className="connection-login-btn"
+                  disabled={connectionBusy}
+                  onClick={() => void connect("save")}
+                >
+                  {connectionBusy ? (
+                    <Loader2 size={15} className="spin" />
+                  ) : (
+                    <Check size={15} />
+                  )}
+                  <span>I’m signed in · Save connection</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="connection-cancel-btn"
+                  disabled={connectionBusy}
+                  onClick={() => void connect("cancel")}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
           ) : (
-            <Button
-              disabled={connectionBusy}
-              onClick={() => void connect("open")}
-            >
-              {connectionBusy ? (
-                <Loader2 size={16} className="spin" />
-              ) : (
-                <ShieldCheck size={16} />
-              )}
-              Open secure sign-in browser
-            </Button>
+            <div className="connection-live-init">
+              <ShieldCheck size={36} className="connection-shield-icon" />
+              <h3>Sign in to {MARKETPLACE_FULL_NAMES[connectionMarket]}</h3>
+              <p>
+                Sign in directly in an isolated Steel cloud browser. Haggleface
+                never sees or stores your password.
+              </p>
+              <Button
+                className="connection-login-btn"
+                disabled={connectionBusy}
+                onClick={() => void connect("open")}
+              >
+                {connectionBusy ? (
+                  <Loader2 size={15} className="spin" />
+                ) : (
+                  <LogIn size={15} />
+                )}
+                <span>Log in to {MARKETPLACE_LABELS[connectionMarket]}</span>
+                <span className="btn-subtext">· Open secure browser</span>
+                <ArrowRight size={14} />
+              </Button>
+            </div>
           )}
+
           {connectionError && (
             <div className="error-state" role="alert">
               {connectionError}
@@ -1339,27 +2139,507 @@ export function ShoppingApp({
       <Modal
         open={profileOpen}
         onOpenChange={setProfileOpen}
-        title="Your demo workspace"
-        description="Explore Haggleface without creating an account."
+        title="Your workspace"
+        description="Manage your account session and marketplace connections."
       >
         <div className="profile-panel">
-          <span className="avatar">J</span>
+          <span className="avatar large">J</span>
           <h3>Welcome, curious shopper.</h3>
           <p>
             Demo searches are saved in this browser tab. Configure Clerk to sign
             in and Convex to keep live searches across devices.
           </p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setProfileOpen(false);
-              setConnectionOpen(true);
-            }}
-          >
-            Manage marketplace connections
-          </Button>
+          <div className="profile-actions">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setProfileOpen(false);
+                setConnectionOpen(true);
+              }}
+            >
+              Manage marketplace connections
+            </Button>
+            <Button
+              variant="outline"
+              className="profile-logout-btn"
+              onClick={() => {
+                setConnected(false);
+                setConnectedMarkets({
+                  facebook: false,
+                  ebay: false,
+                  kijiji: false,
+                });
+                setProfileOpen(false);
+              }}
+            >
+              <LogOut size={14} />
+              <span>Log out of session</span>
+            </Button>
+          </div>
         </div>
       </Modal>
+
+      {/* Decision / Comparison Modal */}
+      <DecisionModal
+        open={decisionOpen}
+        listings={decisionListings}
+        negotiatedIds={negotiatedIds}
+        busy={busy}
+        decisionPaused={decisionPaused}
+        resumedSearching={resumedSearching}
+        isSearching={state?.runs.some((r) => r.status === "searching") || false}
+        onContinue={handleKeepGoing}
+        onStopSearch={handleStopSearch}
+        onClose={() => setDecisionOpen(false)}
+        onNegotiate={(l) => {
+          setDecisionOpen(false);
+          if (negotiatedIds.includes(l.id)) setWorkspaceTab('negotiations');
+          else setNegotiate(l);
+        }}
+        onSelect={(l) => {
+          setDecisionOpen(false);
+          setSelected(l);
+        }}
+      />
     </div>
+  );
+}
+
+function DecisionModal({
+  open,
+  listings,
+  negotiatedIds,
+  busy,
+  decisionPaused,
+  resumedSearching,
+  isSearching,
+  onContinue,
+  onStopSearch,
+  onClose,
+  onNegotiate,
+  onSelect,
+}: {
+  open: boolean;
+  listings: RankedListing[];
+  negotiatedIds: string[];
+  busy: boolean;
+  decisionPaused: boolean;
+  resumedSearching?: boolean;
+  isSearching?: boolean;
+  onContinue: () => void;
+  onStopSearch?: () => void;
+  onClose: () => void;
+  onNegotiate: (l: RankedListing) => void;
+  onSelect: (l: RankedListing) => void;
+}) {
+  const topListings = listings.slice(0, 5);
+  const [viewMode, setViewMode] = useState<'compare' | 'single'>('compare');
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const count = topListings.length;
+  const prevCard = useCallback(() => {
+    if (count > 0) setCurrentIndex((i) => (i - 1 + count) % count);
+  }, [count]);
+
+  const nextCard = useCallback(() => {
+    if (count > 0) setCurrentIndex((i) => (i + 1) % count);
+  }, [count]);
+
+  useEffect(() => {
+    if (!open || viewMode !== 'single') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') prevCard();
+      else if (e.key === 'ArrowRight') nextCard();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, viewMode, prevCard, nextCard]);
+
+  const currentListing = topListings[currentIndex] || topListings[0];
+
+  return (
+    <Modal
+      open={open}
+      onOpenChange={(v) => { if (!v) onClose(); }}
+      title="Compare your shortlist"
+      description={`Top ${topListings.length} scored listing${topListings.length !== 1 ? 's' : ''} — compare side-by-side or inspect single cards.`}
+      className="decision-modal"
+      headerActions={
+        <KeepGoingStopButton
+          decisionPaused={decisionPaused}
+          resumedSearching={resumedSearching}
+          isSearching={isSearching}
+          onKeepGoing={onContinue}
+          onStopSearch={onStopSearch}
+          className="popup-keep-going-btn"
+        />
+      }
+    >
+      <div className="decision-toolbar">
+        <div className="decision-view-toggle">
+          <button
+            type="button"
+            className={`toggle-option ${viewMode === 'compare' ? 'active' : ''}`}
+            onClick={() => setViewMode('compare')}
+            aria-label="Compare all side-by-side"
+          >
+            <Columns3 size={13} />
+            <span>Compare all</span>
+          </button>
+          <button
+            type="button"
+            className={`toggle-option ${viewMode === 'single' ? 'active' : ''}`}
+            onClick={() => setViewMode('single')}
+            aria-label="Single card view"
+          >
+            <Layers size={13} />
+            <span>Single card</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="decision-modal-body">
+        {viewMode === 'compare' ? (
+          <div className="decision-table-wrap">
+            <table className="decision-table">
+              <thead>
+                <tr className="decision-row-item">
+                  <th className="decision-aspect-th decision-aspect-th-corner">
+                    <span className="aspect-title">Item</span>
+                  </th>
+                  {topListings.map((l, i) => (
+                    <th key={l.id} className="decision-col-th">
+                      <div className="decision-col-card-head">
+                        <span className="decision-rank-badge">#{i + 1}</span>
+                        <button
+                          className="decision-col-image-btn"
+                          onClick={() => onSelect(l)}
+                          aria-label={`View ${l.title}`}
+                        >
+                          <img
+                            src={l.imageUrls[0] || '/product.svg'}
+                            alt={l.title}
+                            onError={(e) => { e.currentTarget.src = '/product.svg'; }}
+                          />
+                        </button>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="decision-row-aspect decision-row-title">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Title</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <button
+                        className="decision-cell-title"
+                        onClick={() => onSelect(l)}
+                        title={l.title}
+                      >
+                        {l.title}
+                      </button>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-price">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Price</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-cell-price">
+                        <span className="decision-price-val">{money(l.price, l.currency)}</span>
+                        {l.shippingCost === 0 ? (
+                          <span className="decision-shipping-tag free">
+                            <Truck size={11} /> Free ship
+                          </span>
+                        ) : l.shippingCost ? (
+                          <span className="decision-shipping-tag">
+                            <Truck size={11} /> +{money(l.shippingCost, l.currency)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-region">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Region</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-cell-region" title={l.location || 'Not specified'}>
+                        <MapPin size={12} className="aspect-icon" />
+                        <span className="decision-region-text">{l.location || 'Not specified'}</span>
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-score">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Deal Score</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <span className={`decision-score-pill ${l.dealScore >= 85 ? 'excellent' : l.dealScore >= 75 ? 'good' : 'fair'}`}>
+                        {l.dealScore} · {l.dealScore >= 85 ? 'Excellent' : l.dealScore >= 75 ? 'Good deal' : 'Fair price'}
+                      </span>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-condition">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Condition</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <span className="decision-condition-tag">
+                        {l.condition || 'Pre-owned'}
+                      </span>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-platform">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Platform</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <MarketplaceBadge marketplace={l.marketplace} />
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-seller">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Seller</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      {l.sellerRating != null ? (
+                        <span className="decision-seller-val">
+                          <Star size={11} fill="currentColor" />
+                          {l.sellerRating}
+                          {l.sellerReviewCount != null ? ` (${l.sellerReviewCount})` : ''}
+                        </span>
+                      ) : l.sellerName ? (
+                        <span className="decision-seller-name" title={l.sellerName}>
+                          {l.sellerName}
+                        </span>
+                      ) : (
+                        <span className="decision-seller-none">—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-action">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Action</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-action-cell">
+                        <Button
+                          size="sm"
+                          onClick={() => onNegotiate(l)}
+                          disabled={l.availability === 'sold'}
+                          className="decision-negotiate-btn"
+                        >
+                          <Sparkles size={12} />
+                          {negotiatedIds.includes(l.id) ? 'In chat' : 'Negotiate'}
+                        </Button>
+                        <button className="decision-details-link" onClick={() => onSelect(l)}>
+                          Details <ArrowUpRight size={11} />
+                        </button>
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : currentListing ? (
+          <div className="decision-single-view">
+            <div className="single-card-carousel">
+              <button
+                type="button"
+                className="single-card-arrow prev"
+                onClick={prevCard}
+                aria-label="Previous card (circular)"
+                title="Previous listing"
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              <article className="decision-single-card">
+                <div className="single-card-header">
+                  <span className="single-card-rank">#{currentIndex + 1} of {topListings.length}</span>
+                  <span className={`decision-score-pill ${currentListing.dealScore >= 85 ? 'excellent' : currentListing.dealScore >= 75 ? 'good' : 'fair'}`}>
+                    {currentListing.dealScore} · {currentListing.dealScore >= 85 ? 'Excellent' : currentListing.dealScore >= 75 ? 'Good deal' : 'Fair price'}
+                  </span>
+                </div>
+
+                <button
+                  className="single-card-image-btn"
+                  onClick={() => onSelect(currentListing)}
+                  aria-label={`View ${currentListing.title}`}
+                >
+                  <img
+                    src={currentListing.imageUrls[0] || '/product.svg'}
+                    alt={currentListing.title}
+                    onError={(e) => { e.currentTarget.src = '/product.svg'; }}
+                  />
+                </button>
+
+                <div className="single-card-info">
+                  <button
+                    className="single-card-title"
+                    onClick={() => onSelect(currentListing)}
+                    title={currentListing.title}
+                  >
+                    {currentListing.title}
+                  </button>
+
+                  <div className="single-card-price-row">
+                    <span className="single-card-price">{money(currentListing.price, currentListing.currency)}</span>
+                    {currentListing.shippingCost === 0 ? (
+                      <span className="decision-shipping-tag free">
+                        <Truck size={11} /> Free shipping
+                      </span>
+                    ) : currentListing.shippingCost ? (
+                      <span className="decision-shipping-tag">
+                        <Truck size={11} /> +{money(currentListing.shippingCost, currentListing.currency)} shipping
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="single-card-aspects-grid">
+                    <div className="aspect-item">
+                      <span className="aspect-label">Region</span>
+                      <span className="aspect-val" title={currentListing.location || 'Not specified'}>
+                        <MapPin size={11} className="aspect-icon" />
+                        {currentListing.location || 'Not specified'}
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Condition</span>
+                      <span className="aspect-val">
+                        <span className="decision-condition-tag">
+                          {currentListing.condition || 'Pre-owned'}
+                        </span>
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Platform</span>
+                      <span className="aspect-val">
+                        <MarketplaceBadge marketplace={currentListing.marketplace} />
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Seller</span>
+                      <span className="aspect-val">
+                        {currentListing.sellerRating != null ? (
+                          <span className="decision-seller-val">
+                            <Star size={11} fill="currentColor" />
+                            {currentListing.sellerRating}
+                            {currentListing.sellerReviewCount != null ? ` (${currentListing.sellerReviewCount})` : ''}
+                          </span>
+                        ) : currentListing.sellerName ? (
+                          <span className="decision-seller-name" title={currentListing.sellerName}>
+                            {currentListing.sellerName}
+                          </span>
+                        ) : (
+                          <span className="decision-seller-none">—</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="single-card-actions">
+                  <Button
+                    size="sm"
+                    onClick={() => onNegotiate(currentListing)}
+                    disabled={currentListing.availability === 'sold'}
+                    className="decision-negotiate-btn single-negotiate-btn"
+                  >
+                    <Sparkles size={13} />
+                    {negotiatedIds.includes(currentListing.id) ? 'In chat' : 'Start negotiation'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onSelect(currentListing)}
+                    className="single-details-btn"
+                  >
+                    Details <ArrowUpRight size={12} />
+                  </Button>
+                </div>
+              </article>
+
+              <button
+                type="button"
+                className="single-card-arrow next"
+                onClick={nextCard}
+                aria-label="Next card (circular)"
+                title="Next listing"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+
+            {/* Quick jump slider bar */}
+            {topListings.length > 1 && (
+              <div className="single-card-slider-bar">
+                <div className="slider-label-row">
+                  <span className="slider-hint-text">Slide to jump between top {topListings.length}:</span>
+                  <span className="slider-index-tag">#{currentIndex + 1}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={topListings.length - 1}
+                  step={1}
+                  value={currentIndex}
+                  onChange={(e) => setCurrentIndex(Number(e.target.value))}
+                  className="single-card-range-slider"
+                  aria-label="Slider to navigate between cards"
+                />
+                <div className="slider-numbers-row">
+                  {topListings.map((l, i) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      className={`slider-number-btn ${i === currentIndex ? 'active' : ''}`}
+                      onClick={() => setCurrentIndex(i)}
+                      aria-label={`Jump to card ${i + 1}`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+      <div className="decision-modal-footer">
+        <Button onClick={onContinue} disabled={!busy} variant="outline">
+          {busy
+            ? <><Loader2 size={14} className="spin" />Continue searching</>
+            : 'Search complete'}
+        </Button>
+        <span className="decision-footer-hint">
+          {busy
+            ? 'Agents are still searching — continue to collect more results.'
+            : 'All agents have finished. Start a new search to find more.'}
+        </span>
+      </div>
+    </Modal>
   );
 }

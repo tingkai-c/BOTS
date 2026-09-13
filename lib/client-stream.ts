@@ -22,9 +22,9 @@ export async function readJsonResponse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-export async function readStream<T>(response: Response, onEvent: (event: T) => void) {
+export async function readStream<T>(response: Response, onEvent: (event: T) => unknown) {
   if (!response.ok || response.headers.get('content-type')?.includes('application/json')) {
-    onEvent(await readJsonResponse<T>(response));
+    await onEvent(await readJsonResponse<T>(response));
     return;
   }
   if (!response.body || !response.headers.get('content-type')?.includes('application/x-ndjson')) {
@@ -34,11 +34,11 @@ export async function readStream<T>(response: Response, onEvent: (event: T) => v
   const decoder = new TextDecoder();
   let buffer = '';
   let received = false;
-  const parse = (line: string) => {
+  const parse = async (line: string) => {
     let event: T;
     try { event = JSON.parse(line); } catch { throw new RequestError('The connection was interrupted. Please try your search again.', response.status); }
     received = true;
-    onEvent(event);
+    await onEvent(event);
   };
   try {
     while (true) {
@@ -46,8 +46,8 @@ export async function readStream<T>(response: Response, onEvent: (event: T) => v
       buffer += decoder.decode(value, { stream: !done });
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
-      for (const line of lines) if (line.trim()) parse(line);
-      if (done) { if (buffer.trim()) parse(buffer); break; }
+      for (const line of lines) if (line.trim()) await parse(line);
+      if (done) { if (buffer.trim()) await parse(buffer); break; }
     }
     if (!received) throw new RequestError(responseMessage(response.status), response.status);
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }

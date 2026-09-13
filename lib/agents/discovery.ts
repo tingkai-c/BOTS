@@ -7,7 +7,7 @@ import { searchEbay } from '@/lib/marketplaces/ebay/search';
 import { searchFacebookMarketplace } from '@/lib/marketplaces/facebook/search';
 import { searchKijiji } from '@/lib/marketplaces/kijiji/search';
 import { extractCards } from '@/lib/marketplaces/cards';
-import { inspectListing } from '@/lib/marketplaces/shared';
+import { inspectListing, MarketplaceGateError } from '@/lib/marketplaces/shared';
 import { recoverBrowser } from '@/lib/steel/recovery';
 const adapters={ebay:searchEbay,facebook:searchFacebookMarketplace,kijiji:searchKijiji};
 
@@ -23,12 +23,15 @@ export async function runDiscovery(id:string){
   await progress({status:'searching',message:job.kind==='inspection'?'Inspecting selected listing':'Collecting and inspecting listings',sessionId,debugUrl:viewerUrl(session.debugUrl)});
   const {browser,page}=await connectBrowser(session.id);page.setDefaultTimeout(5000);
   try{
-   const input:SearchInput={query:state.query,condition:'any',marketplace:job.marketplace,location:'San Francisco',radius:25,...state.filters};
+   const input:SearchInput={query:state.query,condition:'any',marketplace:job.marketplace,location:'Toronto',radius:25,...state.filters};
    const queries=state.identification?.searchQueries??[state.query];const term=queries[Math.min(cursor.queryIndex,queries.length-1)];
    const add=async(l:Listing)=>{if(collected.has(l.id)||added>=30||Date.now()-started>150_000)return;if(l.similarityScore<.25)return;collected.set(l.id,l);added++;await progress({listing:l});};
    if(job.kind==='discovery'){
+    // Facebook's listing currency depends on the marketplace region and isn't known here, unlike
+    // eBay (USD) and Kijiji (CAD) — only drop maxPrice when a mismatch is actually confirmed,
+    // rather than defaulting "unknown" to "silently ignore the user's price filter."
     const sourceCurrency=job.marketplace==='kijiji'?'CAD':job.marketplace==='ebay'?'USD':undefined;
-    await adapters[job.marketplace](page,state.id,term,{...input,maxPrice:sourceCurrency===(input.currency??'USD')?input.maxPrice:undefined},add);
+    await adapters[job.marketplace](page,state.id,term,{...input,maxPrice:sourceCurrency&&sourceCurrency!==(input.currency??'USD')?undefined:input.maxPrice},add);
     const locationControls=(await page.locator('[data-testid="location"], [aria-label*="Location"], [aria-label*="location"]').allTextContents()).join(' ');
     if(!locationControls.toLowerCase().includes(input.location.toLowerCase()))await progress({message:'Requested location could not be verified in marketplace controls. Check each listing location.'});
     if(input.condition!=='any')await progress({message:'Condition is filtered from extracted listings; the marketplace filter could not be verified.'});
@@ -50,7 +53,7 @@ export async function runDiscovery(id:string){
    await progress({status:remaining?'searching':'complete',outcome:remaining?'running':!collected.size?'no_matches':failedDetails?'partial':'complete',message:remaining?'Progress saved · continuing in the next batch':collected.size?`${collected.size} listings saved · ${failedDetails} detail inspections need attention`:'No matching listings found'});
    await mutate('work:checkpoint',{...base,status:remaining?'queued':'complete',cursor});
   }finally{await browser.close().catch(()=>{});}
- }catch(e){const message=e instanceof Error&&/sign in/i.test(e.message)?'Sign in is required. Reconnect this marketplace.':'This marketplace could not finish. Saved listings are preserved; use Find more to retry.';await progress({status:/Sign in/.test(message)?'login_required':'failed',outcome:/Sign in/.test(message)?'needs_sign_in':collected.size?'partial':'failed',message});await mutate('work:checkpoint',{...base,status:/Sign in/.test(message)?'needs_sign_in':'failed',cursor,message});}
+ }catch(e){const needsReconnect=e instanceof MarketplaceGateError;const message=needsReconnect?e.message:'This marketplace could not finish. Saved listings are preserved; use Find more to retry.';await progress({status:needsReconnect?'login_required':'failed',outcome:needsReconnect?'needs_sign_in':collected.size?'partial':'failed',message});await mutate('work:checkpoint',{...base,status:needsReconnect?'needs_sign_in':'failed',cursor,message});}
  finally{if(sessionId)await releaseSession(sessionId).catch(()=>{});}
 }
 export type DiscoveryJobId=Id<'workspaceJobs'>;

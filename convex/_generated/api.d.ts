@@ -14,6 +14,7 @@ import type * as crons from "../crons.js";
 import type * as dispatcher from "../dispatcher.js";
 import type * as negotiationValidators from "../negotiationValidators.js";
 import type * as store from "../store.js";
+import type * as users from "../users.js";
 import type * as validators from "../validators.js";
 import type * as work from "../work.js";
 
@@ -30,6 +31,7 @@ declare const fullApi: ApiFromModules<{
   dispatcher: typeof dispatcher;
   negotiationValidators: typeof negotiationValidators;
   store: typeof store;
+  users: typeof users;
   validators: typeof validators;
   work: typeof work;
 }>;
