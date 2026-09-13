@@ -2,10 +2,7 @@
 import { useState } from "react";
 import {
   ArrowUpRight,
-  Check,
-  ChevronRight,
   Circle,
-  Globe,
   LockKeyhole,
   Maximize2,
   Monitor,
@@ -14,8 +11,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { Marketplace, SearchState } from "@/lib/schemas";
-import { MarketplaceBadge } from "./listings";
 import { Modal } from "./ui/dialog";
+
 export function BrowserView({
   url,
   interactive = false,
@@ -39,6 +36,7 @@ export function BrowserView({
     />
   );
 }
+
 export function AgentPanel({
   state,
   activeMarket,
@@ -46,19 +44,42 @@ export function AgentPanel({
   onConnect,
 }: {
   state: SearchState | null;
-  activeMarket: Marketplace;
-  setActiveMarket: (m: Marketplace) => void;
+  activeMarket: Marketplace | "all";
+  setActiveMarket: (m: Marketplace | "all") => void;
   onConnect: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const run = state?.runs.find((r) => r.marketplace === activeMarket);
-  const browsing = run?.status === "searching";
+  const run =
+    activeMarket === "all"
+      ? state?.runs.find((r) => r.status === "searching") || state?.runs[0]
+      : state?.runs.find((r) => r.marketplace === activeMarket);
+  const browsing =
+    activeMarket === "all"
+      ? state?.runs.some((r) => r.status === "searching")
+      : run?.status === "searching";
   const listings =
-    state?.listings.filter((l) => l.marketplace === activeMarket) || [];
+    activeMarket === "all"
+      ? state?.listings || []
+      : state?.listings.filter((l) => l.marketplace === activeMarket) || [];
   const events =
     state?.events
-      .filter((e) => !e.marketplace || e.marketplace === activeMarket)
+      .filter(
+        (e) =>
+          activeMarket === "all" ||
+          !e.marketplace ||
+          e.marketplace === activeMarket,
+      )
       .slice(-5) || [];
+
+  const marketAddress =
+    activeMarket === "facebook"
+      ? "facebook.com/marketplace"
+      : activeMarket === "ebay"
+        ? "ebay.com/sch"
+        : activeMarket === "kijiji"
+          ? "kijiji.ca/b-search"
+          : "haggleface.com/agent";
+
   const view = (
     <div className="browser-frame">
       <div className="browser-toolbar">
@@ -68,15 +89,17 @@ export function AgentPanel({
           <i />
         </div>
         <div className="address">
-          <LockKeyhole size={10} />
-          {activeMarket === "facebook"
-            ? "facebook.com/marketplace"
-            : activeMarket === "ebay"
-              ? "ebay.com/sch"
-              : "kijiji.ca/b-search"}
-          <span>{state?.demo ? "SIMULATED" : "BROWSER"}</span>
+          <LockKeyhole size={11} className="lock-icon" />
+          <span className="address-url">{marketAddress}</span>
+          <span className="browser-badge-text">
+            {state?.demo ? "SIMULATED" : "BROWSER"}
+          </span>
         </div>
-        <button aria-label="Expand browser" onClick={() => setExpanded(true)}>
+        <button
+          className="browser-expand-trigger"
+          aria-label="Expand browser"
+          onClick={() => setExpanded(true)}
+        >
           <Maximize2 size={13} />
         </button>
       </div>
@@ -85,28 +108,26 @@ export function AgentPanel({
       ) : (
         <div className={`simulated-browser ${state ? "has-search" : ""}`}>
           <div className="mock-market-header">
-            <strong>
+            <div className="mock-market-brand">
               {activeMarket === "facebook" ? (
-                <>
-                  <b className="fb-mark">f</b> Marketplace
-                </>
+                <span className="platform-icon fb">f</span>
               ) : activeMarket === "ebay" ? (
-                <>
-                  <span className="ebay-logo">
-                    e<span>b</span>
-                    <i>a</i>
-                    <em>y</em>
-                  </span>
-                </>
+                <span className="platform-icon ebay">e</span>
+              ) : activeMarket === "kijiji" ? (
+                <span className="platform-icon kijiji">k</span>
               ) : (
-                <>
-                  <b className="kijiji-mark">k</b> Kijiji
-                </>
+                <div className="multi-platform-icons">
+                  <span className="platform-icon fb">f</span>
+                  <span className="platform-icon ebay">e</span>
+                  <span className="platform-icon kijiji">k</span>
+                </div>
               )}
-            </strong>
-            <div>
-              <Search size={12} />
-              {state?.identification?.productName || "Search marketplace"}
+            </div>
+            <div className="mock-market-search">
+              <Search size={12} className="mock-search-icon" />
+              <span>
+                {state?.identification?.productName || "Search marketplace"}
+              </span>
             </div>
           </div>
           {state && listings.length > 0 ? (
@@ -135,9 +156,9 @@ export function AgentPanel({
           ) : (
             <div className="browser-empty">
               <div className="browser-empty-icon">
-                <Monitor size={27} />
-                <span>
-                  <Sparkles size={12} />
+                <Monitor size={28} />
+                <span className="sparkle-badge">
+                  <Sparkles size={13} />
                 </span>
               </div>
               <h4>
@@ -173,96 +194,86 @@ export function AgentPanel({
       )}
     </div>
   );
+
   return (
     <aside className="agent-panel">
-      <div className="agent-heading">
-        <div className="agent-heading-title">
-          <span className="agent-symbol">
-            <Sparkles size={17} />
+      <div className="agent-header">
+        <div className="agent-header-left">
+          <span className={`status-pill ${browsing ? "active" : ""}`}>
+            <span className="status-dot" />
+            {browsing ? "Working" : "Ready"}
           </span>
-          <div>
-            <h2>Your shopping agent</h2>
-            <p>Doing the legwork for you</p>
-          </div>
+          <h2 className="agent-header-title">Your haggler agent preview</h2>
         </div>
-        <span className={`live-pill ${browsing ? "active" : ""}`}>
-          <i />
-          {browsing ? "Working" : "Ready"}
-        </span>
+        <button
+          className="agent-expand-icon-btn"
+          aria-label="Expand browser preview"
+          onClick={() => setExpanded(true)}
+        >
+          <Maximize2 size={16} />
+        </button>
       </div>
-      <div className="agent-tabs">
-        {(["facebook", "ebay", "kijiji"] as const).map((m) => (
-          <button
-            key={m}
-            className={activeMarket === m ? "active" : ""}
-            onClick={() => setActiveMarket(m)}
-          >
-            <MarketplaceBadge marketplace={m} />
-            {state && (
-              <span className="tab-count">
-                {state.listings.filter((l) => l.marketplace === m).length}
-              </span>
-            )}
-          </button>
-        ))}
+
+      <div className="agent-market-tabs">
+        <button
+          type="button"
+          className={`agent-tab-btn ${activeMarket === "all" ? "active" : ""}`}
+          onClick={() => setActiveMarket("all")}
+        >
+          ALL
+        </button>
+        <button
+          type="button"
+          className={`agent-tab-btn ${activeMarket === "facebook" ? "active" : ""}`}
+          onClick={() => setActiveMarket("facebook")}
+          aria-label="Facebook Marketplace"
+        >
+          <span className="platform-icon fb">f</span>
+        </button>
+        <button
+          type="button"
+          className={`agent-tab-btn ${activeMarket === "ebay" ? "active" : ""}`}
+          onClick={() => setActiveMarket("ebay")}
+          aria-label="eBay"
+        >
+          <span className="platform-icon ebay">e</span>
+        </button>
+        <button
+          type="button"
+          className={`agent-tab-btn ${activeMarket === "kijiji" ? "active" : ""}`}
+          onClick={() => setActiveMarket("kijiji")}
+          aria-label="Kijiji"
+        >
+          <span className="platform-icon kijiji">k</span>
+        </button>
       </div>
-      <div className="agent-current">
-        <div className={browsing ? "orbit spin" : "orbit"}>
-          {run?.status === "complete" ? (
-            <Check size={17} />
-          ) : (
-            <Globe size={17} />
-          )}
-        </div>
-        <div>
-          <strong>{run?.message || "Ready when you are"}</strong>
-          <p>
-            {browsing
-              ? "Discovering listings in a real browser"
-              : state?.demo
-                ? "Sample sessions. Real shopping workflow."
-                : "Three marketplaces. One smarter shortlist."}
-          </p>
-        </div>
-      </div>
+
       {view}
+
       {run?.status === "login_required" && (
         <button className="connection-warning" onClick={onConnect}>
           Sign in to continue <ArrowUpRight size={15} />
         </button>
       )}
-      <div className="browser-footnote">
-        <LockKeyhole size={11} />{" "}
-        {run?.debugUrl
-          ? "Secure cloud browser powered by Steel"
-          : "Powered by Steel · Playwright browser agents"}
-        <span>↗</span>
-      </div>
-      <div className="timeline">
-        <div className="section-label">
-          ACTIVITY{" "}
-          <span>
-            {events.length
-              ? `${state?.events.length} actions`
-              : "Agent is on standby"}
-          </span>
-        </div>
+
+      <div className="activity-log-section">
+        <div className="activity-log-heading">ACTIVITY LOG</div>
         {events.length ? (
-          <div aria-live="polite">
+          <div className="activity-list" aria-live="polite">
             {events.map((e, i) => (
               <div
                 key={e.id}
-                className={`timeline-item ${e.kind === "error" ? "event-error" : ""}`}
+                className={`activity-item ${e.kind === "error" ? "error" : ""}`}
               >
                 <span
-                  className={
+                  className={`activity-bullet ${
                     i === events.length - 1 && browsing ? "current" : ""
-                  }
+                  }`}
                 >
-                  {e.kind === "error" ? "!" : <Check size={12} />}
+                  <Circle size={8} fill="currentColor" />
                 </span>
-                <p>{e.message}</p>
-                <time>
+                <p className="activity-text">{e.message}</p>
+                <time className="activity-time">
                   {new Date(e.time).toLocaleTimeString("en-US", {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -273,49 +284,37 @@ export function AgentPanel({
             ))}
           </div>
         ) : (
-          <>
-            <div className="timeline-item muted">
-              <span>
-                <Circle size={10} />
+          <div className="activity-list activity-idle">
+            <div className="activity-item placeholder">
+              <span className="activity-bullet">
+                <Circle size={8} />
               </span>
-              <p>Understand what you’re looking for</p>
+              <span className="dashed-placeholder short" />
             </div>
-            <div className="timeline-item muted">
-              <span>
-                <Circle size={10} />
+            <div className="activity-item placeholder">
+              <span className="activity-bullet">
+                <Circle size={8} />
               </span>
-              <p>Search your marketplaces</p>
+              <span className="dashed-placeholder medium" />
             </div>
-            <div className="timeline-item muted">
-              <span>
-                <Circle size={10} />
+            <div className="activity-item placeholder">
+              <span className="activity-bullet">
+                <Circle size={8} />
               </span>
-              <p>Compare prices and find your best deal</p>
+              <span className="dashed-placeholder long" />
             </div>
-          </>
+          </div>
         )}
       </div>
-      <div className="agent-bottom">
-        <div>
-          <span className="shield-icon">
-            <Check size={13} />
-          </span>
-          <p>
-            You’re always in control.
-            <br />
-            <small>No seller messages without your approval.</small>
-          </p>
-        </div>
-        <ChevronRight size={15} />
-      </div>
+
       <Modal
         open={expanded}
         onOpenChange={setExpanded}
-        title="Agent browser"
+        title="Agent browser preview"
         description={
           state?.demo
-            ? "Simulated marketplace session"
-            : "Live Steel browser session"
+            ? "Simulated marketplace browsing session"
+            : "Live Steel cloud browser session"
         }
       >
         {view}
