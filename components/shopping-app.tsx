@@ -21,6 +21,7 @@ import {
   Columns3,
   Command,
   Compass,
+  Download,
   History,
   ImagePlus,
   Info,
@@ -46,8 +47,10 @@ import type {
   RankedListing,
   SearchState,
   StreamEvent,
+  Listing,
 } from "@/lib/schemas";
 import { deduplicate, rankListings } from "@/lib/scoring";
+import { detectListingUrl } from "@/lib/marketplaces/shared";
 import {
   readStream,
   readJsonResponse,
@@ -223,6 +226,8 @@ export function ShoppingApp({
   pausedMarketsRef.current = pausedMarkets;
   const pauseRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
   const roundStartCount = useRef(0);
+  const importedListingRef = useRef<Listing | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
   const lastResultAt = useRef(0);
 
   const isMarketConnected = (m: Marketplace) =>
@@ -337,7 +342,7 @@ export function ShoppingApp({
 
   // Decision gate: fire when 5 new results arrive in this round OR 10 s elapse with no new result
   useEffect(() => {
-    if (decisionOpen) return; // already showing
+    if (decisionOpen || state?.demo) return; // already showing or simulated demo search
     const ranked = rankListings(state?.listings || []);
     const current = ranked.length;
     if (current === 0) return;
@@ -476,6 +481,9 @@ export function ShoppingApp({
           };
         });
         return;
+      }
+      if (importedListingRef.current) {
+        event.state.listings = deduplicate(event.state.listings, importedListingRef.current);
       }
       setState(event.state);
       restoredId.current = event.state.id;
@@ -756,6 +764,121 @@ export function ShoppingApp({
 
   async function search(text = query) {
     if (busy || (!text.trim() && !image)) return;
+    const detected = detectListingUrl(text);
+    if (detected) {
+      if (account.required && !account.signedIn) {
+        setError(
+          account.loaded
+            ? "Sign in to use your shopping agent."
+            : "Your account is loading. Please try again in a moment.",
+        );
+        if (account.loaded) account.openSignIn();
+        return;
+      }
+      setIsImporting(true);
+      setBusy(true);
+      setError("");
+      setSavedOnly(false);
+      setActiveTab("discover");
+      setSelected(null);
+      setState(null);
+      setDecisionOpen(false);
+      roundStartCount.current = 0;
+      lastResultAt.current = Date.now();
+      setActiveMarket(detected.marketplace);
+      abort.current = new AbortController();
+
+      let importedItem: Listing | null = null;
+      try {
+        const inspectRes = await fetch("/api/inspect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: detected.url, marketplace: detected.marketplace }),
+          signal: abort.current.signal,
+        });
+        if (!inspectRes.ok) {
+          const err = await inspectRes.json().catch(() => ({}));
+          throw new Error(err.error || `Could not import ${detected.marketplace} posting.`);
+        }
+        await readStream<Listing & { error?: string; debugUrl?: string }>(inspectRes, (item) => {
+          if (item.error) throw new Error(item.error);
+          if (item.title && typeof item.price === "number") {
+            importedItem = { ...item, imported: true };
+          }
+        });
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          setIsImporting(false);
+          setBusy(false);
+          return;
+        }
+        setError(err instanceof Error ? err.message : "Failed to import listing.");
+        setIsImporting(false);
+        setBusy(false);
+        return;
+      }
+
+      if (!importedItem) {
+        setError("Could not extract listing information from this URL.");
+        setIsImporting(false);
+        setBusy(false);
+        return;
+      }
+
+      setIsImporting(false);
+      const importedListing: Listing = importedItem;
+      importedListingRef.current = importedListing;
+      const searchTitle = importedListing.title;
+      setQuery(searchTitle);
+      if (searchTitle.trim()) {
+        setRecentSearches((prev) => [searchTitle.trim(), ...prev.filter((q) => q !== searchTitle.trim())].slice(0, 8));
+      }
+
+      try {
+        await readStream<StreamEvent>(
+          await fetch("/api/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query: searchTitle,
+              maxPrice: maxPrice ? Number(maxPrice) : undefined,
+              condition,
+              marketplace: market,
+              location,
+              radius,
+              currency,
+              importedListing,
+            }),
+            signal: abort.current.signal,
+          }),
+          applyEvent,
+        );
+      } catch (e) {
+        if (e instanceof RequestError) {
+          if (e.status === 401) {
+            setError(
+              account.loaded
+                ? "Sign in to use your shopping agent."
+                : "Account check failed. Try again in a moment.",
+            );
+            if (account.loaded) account.openSignIn();
+          } else setError(e.message);
+        } else if (e instanceof Error && e.name !== "AbortError") {
+          setError(e.message || "Could not complete search.");
+        }
+      } finally {
+        const activePause = pauseRef.current as { resolve: () => void } | null;
+        if (activePause) {
+          activePause.resolve();
+          pauseRef.current = null;
+        }
+        setDecisionPaused(false);
+        setResumedSearching(false);
+        setBusy(false);
+      }
+      return;
+    }
+    importedListingRef.current = null;
     if (pauseRef.current) {
       pauseRef.current.resolve();
       pauseRef.current = null;
@@ -1180,9 +1303,19 @@ export function ShoppingApp({
               aria-label="What are you looking for?"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Try ‘Sony WH-1000XM5 under $250’"
+              placeholder="Search with prompt or import with URL…"
               maxLength={300}
             />
+            {(() => {
+              const detectedPosting = detectListingUrl(query);
+              if (!detectedPosting) return null;
+              return (
+                <div className="search-detected-pill" title={`Import ${detectedPosting.marketplace} listing`}>
+                  <PlatformLogo market={detectedPosting.marketplace} size={13} />
+                  <span>Import from {detectedPosting.marketplace === "ebay" ? "eBay" : detectedPosting.marketplace === "kijiji" ? "Kijiji" : "Facebook"}</span>
+                </div>
+              );
+            })()}
             <kbd className="search-shortcut">
               <Command size={10} /> K
             </kbd>
@@ -1204,16 +1337,29 @@ export function ShoppingApp({
               onChange={(e) => void upload(e.target.files?.[0])}
             />
 
-            <Button
-              type="submit"
-              aria-label="Find it"
-              disabled={busy || (!query.trim() && !image)}
-              className="search-submit-btn"
-            >
-              {busy && <Loader2 size={15} className="spin" />}
-              <span>{busy ? "Searching" : "Find"}</span>
-              {!busy && <ArrowRight size={15} />}
-            </Button>
+            {(() => {
+              const detectedPosting = detectListingUrl(query);
+              return (
+                <Button
+                  type="submit"
+                  aria-label={detectedPosting ? "Import and compare listing" : "Find it"}
+                  disabled={busy || (!query.trim() && !image)}
+                  className={`search-submit-btn ${detectedPosting ? "import-mode" : ""}`}
+                >
+                  {busy && <Loader2 size={15} className="spin" />}
+                  <span>
+                    {busy
+                      ? isImporting
+                        ? "Importing"
+                        : "Searching"
+                      : detectedPosting
+                        ? "Import & Compare"
+                        : "Find"}
+                  </span>
+                  {!busy && (detectedPosting ? <Download size={15} /> : <ArrowRight size={15} />)}
+                </Button>
+              );
+            })()}
           </form>
 
           {image && (
