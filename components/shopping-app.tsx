@@ -172,7 +172,7 @@ export function ShoppingApp({
   const [selectedSnapshot, setSelected] = useState<RankedListing | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState('listings');
   const [negotiatedIds,setNegotiatedIds]=useState<string[]>([]);
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('CAD');
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [negotiate, setNegotiate] = useState<RankedListing | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
