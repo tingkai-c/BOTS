@@ -13,12 +13,18 @@ import {
   ArrowDownUp,
   ArrowRight,
   ArrowUpRight,
+  Bookmark,
   Check,
   CheckCheck,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Command,
-  Heart,
+  Compass,
+  History,
   ImagePlus,
+  Info,
+  ListFilter,
   Loader2,
   MapPin,
   Plus,
@@ -44,9 +50,11 @@ import { photo } from "@/lib/demo/fixtures";
 import { AgentPanel, BrowserView } from "./agent-panel";
 import { ListingCard, MarketplaceBadge, DealScore, money } from "./listings";
 import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver } from './workspace-negotiations';
+import { PlatformLogo } from "./platform-logos";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
-import { useShoppingAuth } from './providers';
+import { useShoppingAuth } from "./providers";
+
 function AuthControl() {
   const { isSignedIn, isLoaded } = useUser();
   const clerk = useClerk();
@@ -64,16 +72,19 @@ function AuthControl() {
   ) : (
     <div className="auth-controls">
       <SignInButton mode="modal">
-        <Button variant="ghost" size="sm">
+        <Button variant="outline" size="sm" className="sign-in-btn">
           Sign in
         </Button>
       </SignInButton>
       <SignUpButton mode="modal">
-        <Button size="sm">Sign up</Button>
+        <Button size="sm" className="sign-up-btn">
+          Sign up
+        </Button>
       </SignUpButton>
     </div>
   );
 }
+
 function LiveState({
   id,
   onState,
@@ -89,6 +100,7 @@ function LiveState({
   }, [value, onState]);
   return null;
 }
+
 const examples = [
   {
     query: "Sony WH-1000XM5 under $250",
@@ -115,6 +127,9 @@ const examples = [
     className: "camera",
   },
 ];
+
+const ALL_MARKETS: Marketplace[] = ["kijiji", "ebay", "facebook"];
+
 export function ShoppingApp({
   demo,
   initialId,
@@ -137,7 +152,7 @@ export function ShoppingApp({
   const [radius, setRadius] = useState(25);
   const [filters, setFilters] = useState(false);
   const [sort, setSort] = useState("best");
-  const [activeMarket, setActiveMarket] = useState<Marketplace>("facebook");
+  const [activeMarket, setActiveMarket] = useState<Marketplace | "all">("all");
   const [mobileTab, setMobileTab] = useState("results");
   const [selectedSnapshot, setSelected] = useState<RankedListing | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState('listings');
@@ -147,13 +162,31 @@ export function ShoppingApp({
   const [negotiate, setNegotiate] = useState<RankedListing | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
   const [savedOnly, setSavedOnly] = useState(false);
+  const [activeTab, setActiveTab] = useState<"discover" | "saved" | "history">("discover");
+  const [recentSearches, setRecentSearches] = useState<string[]>([
+    "Sony WH-1000XM5 under $250",
+    "Herman Miller Aeron near me",
+    "Fujifilm X100V camera",
+  ]);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
-  const [connectionMarket, setConnectionMarket] =
-    useState<Marketplace>("facebook");
+  const [connectionMarket, setConnectionMarket] = useState<Marketplace>("facebook");
   const [connectionUrl, setConnectionUrl] = useState("");
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [connected, setConnected] = useState(false);
+  const [connectedMarkets, setConnectedMarkets] = useState<Record<Marketplace, boolean>>({
+    facebook: false,
+    ebay: false,
+    kijiji: false,
+  });
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+
+  const isMarketConnected = (m: Marketplace) =>
+    m === "facebook" ? connectedMarkets.facebook || connected : connectedMarkets[m];
+
+  const toAddMarkets = ALL_MARKETS.filter((m) => !isMarketConnected(m));
+  const addedMarkets = ALL_MARKETS.filter((m) => isMarketConnected(m));
   const [inspecting, setInspecting] = useState(false);
   const [inspectUrl, setInspectUrl] = useState("");
   const [inspectText, setInspectText] = useState("");
@@ -161,6 +194,7 @@ export function ShoppingApp({
   const input = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
+
   useEffect(() => {
     queueMicrotask(() => {
       if (initialId && demo) {
@@ -199,12 +233,14 @@ export function ShoppingApp({
       }
     });
   }, [initialId, demo]);
+
   useEffect(() => {
     if (state?.demo)
       try {
         sessionStorage.setItem(`scout:${state.id}`, JSON.stringify(state));
       } catch {}
   }, [state]);
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -218,6 +254,7 @@ export function ShoppingApp({
       abort.current?.abort();
     };
   }, []);
+
   const restoredId = useRef<string | null>(null);
   const updateLive = useCallback((s: SearchState) => {
     setState(s);
@@ -234,6 +271,7 @@ export function ShoppingApp({
       }
     }
   }, []);
+
   const applyEvent = (event: StreamEvent) => {
     if (event.type === "state") {
       setState(event.state);
@@ -277,21 +315,30 @@ export function ShoppingApp({
       }
     });
   };
+
   async function search(text = query) {
     if (busy || (!text.trim() && !image)) return;
     setQuery(text);
+    if (text.trim()) {
+      setRecentSearches((prev) => [text.trim(), ...prev.filter((q) => q !== text.trim())].slice(0, 8));
+    }
     if (account.required && !account.signedIn) {
-      setError(account.loaded ? 'Sign in to use your shopping agent.' : 'Your account is loading. Please try again in a moment.');
+      setError(
+        account.loaded
+          ? "Sign in to use your shopping agent."
+          : "Your account is loading. Please try again in a moment.",
+      );
       if (account.loaded) account.openSignIn();
       return;
     }
     setBusy(true);
     setError("");
     setSavedOnly(false);
+    setActiveTab("discover");
     setSelected(null);
     setState(null);
     setActiveMarket(
-      market === "ebay" ? "ebay" : market === "kijiji" ? "kijiji" : "facebook",
+      market === "ebay" ? "ebay" : market === "kijiji" ? "kijiji" : market === "facebook" ? "facebook" : "all",
     );
     abort.current = new AbortController();
     try {
@@ -314,64 +361,60 @@ export function ShoppingApp({
         applyEvent,
       );
     } catch (e) {
-      if (e instanceof RequestError && e.status === 401)
-        window.dispatchEvent(new Event("scout:sign-in"));
-      if ((e as Error).name !== "AbortError") setError((e as Error).message);
+      if (e instanceof RequestError) {
+        if (e.status === 401) {
+          setError(
+            account.loaded
+              ? "Sign in to use your shopping agent."
+              : "Account check failed. Try again in a moment.",
+          );
+          if (account.loaded) account.openSignIn();
+        } else setError(e.message);
+      } else if (e instanceof Error && e.name !== "AbortError") {
+        setError(e.message || "Could not complete search.");
+      }
     } finally {
       setBusy(false);
     }
   }
+
   async function upload(f?: File) {
     if (!f) return;
-    setError("");
-    if (
-      !["image/jpeg", "image/png", "image/webp"].includes(f.type) ||
-      f.size > 3 * 1024 * 1024
-    ) {
-      setError("Choose a JPG, PNG, or WebP image under 3 MB.");
+    if (!["image/jpeg", "image/png", "image/webp"].includes(f.type)) {
+      setError("Choose a JPG, PNG, or WebP photo.");
       return;
     }
+    if (f.size > 5 * 1024 * 1024) {
+      setError("Photos must be under 5 MB.");
+      return;
+    }
+    setError("");
+    setImageName(f.name);
     const reader = new FileReader();
     reader.onload = () => {
-      setImage(String(reader.result));
-      setImageName(f.name);
-      input.current?.focus();
+      setImage(reader.result as string);
+      if (!query) void identifyImage(reader.result as string);
     };
-    reader.onerror = () =>
-      setError("The image could not be read. Try another file.");
     reader.readAsDataURL(f);
   }
-  async function connect(action: "open" | "save" | "cancel") {
-    setConnectionBusy(true);
-    setConnectionError("");
+
+  async function identifyImage(dataUrl: string) {
     try {
-      const response = await fetch("/api/connections", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ marketplace: connectionMarket, action }),
-      });
-      const data = await readJsonResponse<{
-        debugUrl?: string;
-        connected?: boolean;
-        demo?: boolean;
-      }>(response);
-      if (data.debugUrl) setConnectionUrl(data.debugUrl);
-      if (data.connected || (data.demo && action === "save")) {
-        setConnected(true);
-        setConnectionOpen(false);
-        setConnectionUrl("");
-      }
-      if (action === "cancel") {
-        setConnectionUrl("");
-        setConnectionOpen(false);
-      }
-    } catch (e) {
-      setConnectionError((e as Error).message);
-    } finally {
-      setConnectionBusy(false);
-    }
+      const { identification } = await readJsonResponse<{
+        identification: { productName: string };
+      }>(
+        await fetch("/api/identify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: dataUrl }),
+        }),
+      );
+      if (identification?.productName && !query)
+        setQuery(identification.productName);
+    } catch {}
   }
-  async function inspect(l: RankedListing) {
+
+  async function inspect(listing: RankedListing) {
     setInspecting(true);
     setInspectText("");
     setInspectUrl("");
@@ -384,7 +427,7 @@ export function ShoppingApp({
         await fetch("/api/inspect", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(l),
+          body: JSON.stringify(listing),
         }),
         (e) => {
           if (e.error) throw new Error(e.error);
@@ -393,21 +436,66 @@ export function ShoppingApp({
         },
       );
     } catch (e) {
-      setInspectText((e as Error).message);
+      setInspectText(
+        e instanceof Error
+          ? e.message
+          : "Could not complete agent inspection.",
+      );
     } finally {
       setInspecting(false);
-      setInspectUrl("");
     }
   }
+
+  async function connect(action: "open" | "save" | "cancel") {
+    setConnectionBusy(true);
+    setConnectionError("");
+    try {
+      const data = await readJsonResponse<{
+        debugUrl?: string;
+        connected?: boolean;
+        demo?: boolean;
+      }>(
+        await fetch("/api/connections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            marketplace: connectionMarket,
+            action,
+          }),
+        }),
+      );
+      if (data.debugUrl) setConnectionUrl(data.debugUrl);
+      if (data.connected || data.demo) {
+        setConnected(true);
+        setConnectedMarkets((prev) => ({
+          ...prev,
+          [connectionMarket]: true,
+          facebook: true,
+        }));
+        setConnectionUrl("");
+        setConnectionOpen(false);
+      }
+      if (action === "cancel") {
+        setConnectionUrl("");
+        setConnectionOpen(false);
+      }
+    } catch (e) {
+      setConnectionError(
+        e instanceof Error ? e.message : "Connection failed. Please retry.",
+      );
+    } finally {
+      setConnectionBusy(false);
+    }
+  }
+
   const ranked = rankListings(state?.listings || []);
   const selected=ranked.find(l=>l.id===selectedSnapshot?.id)??selectedSnapshot;
   async function findMore(listingId?:string){if(!state)return;setDiscoveryBusy(true);try{const result=await readJsonResponse<{demo?:boolean}>(await fetch('/api/workspace/discovery',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspaceId:state.id,listingId})}));if(result.demo)setError('Demo mode has no additional marketplace results.');}catch(e){setError((e as Error).message);}finally{setDiscoveryBusy(false);}}
-  const limit = maxPrice ? Number(maxPrice) : Infinity;
   let listings = ranked.filter(
     (l) =>
-      l.price + (l.shippingCost ?? 0) <= limit &&
       l.currency === currency &&
       (market === "all" || l.marketplace === market) &&
+      (!maxPrice || l.price <= Number(maxPrice)) &&
       (condition === "any" || l.condition === condition) &&
       (!savedOnly || saved.includes(l.id)),
   );
@@ -419,6 +507,7 @@ export function ShoppingApp({
   if (sort === "newest")
     listings = [...listings].sort((a, b) => b.scrapedAt - a.scrapedAt);
   const best = listings[0];
+
   return (
     <div className="app-shell">
       {state&&<NegotiationObserver id={state.id} demo={state.demo} onIds={setNegotiatedIds}/>}
@@ -428,15 +517,16 @@ export function ShoppingApp({
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && (
           <LiveState id={state?.id || initialId!} onState={updateLive} />
         )}
+
       <header className="topnav">
         <a className="brand" href="/">
           <span className="brand-icon">
-            <Search size={21} />
+            <Search size={19} />
             <i />
           </span>
           haggleface<span className="brand-dot">.</span>
         </a>
-        <div className="nav-divider" />
+
         <div className="nav-right">
           {demo && (
             <span className="demo-badge">
@@ -444,17 +534,106 @@ export function ShoppingApp({
               Demo mode
             </span>
           )}
+
           <button
-            className="connect-button"
-            onClick={() => setConnectionOpen(true)}
+            type="button"
+            className="info-icon-btn"
+            aria-label="About Haggleface"
+            onClick={() => setInfoOpen(true)}
           >
-            <span className="facebook-icon">f</span>
-            {connected
-              ? `${demo ? "Demo · " : ""}Connected`
-              : "Connect Facebook"}
-            {connected ? <Check size={13} /> : <Plus size={13} />}
+            <Info size={16} />
           </button>
-          <div className="nav-divider" />
+
+          <div className="nav-vdivider" />
+
+          {/* Platform Connections Widget */}
+          <div className="platform-connections-widget">
+            {toAddMarkets.length > 0 && (
+              <div
+                className="market-connect-capsule"
+                role="group"
+                aria-label="Marketplaces to add"
+              >
+                {toAddMarkets.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className="market-capsule-item"
+                    onClick={() => {
+                      setConnectionMarket(m);
+                      setConnectionOpen(true);
+                    }}
+                    aria-label={
+                      m === "facebook"
+                        ? "Connect Facebook"
+                        : `Connect ${m === "ebay" ? "eBay" : "Kijiji"}`
+                    }
+                    title={`Connect ${
+                      m === "facebook"
+                        ? "Facebook Marketplace"
+                        : m === "ebay"
+                          ? "eBay"
+                          : "Kijiji"
+                    }`}
+                  >
+                    <PlatformLogo market={m} size={18} />
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="capsule-symbol-btn"
+                  onClick={() => {
+                    setConnectionMarket(toAddMarkets[0]);
+                    setConnectionOpen(true);
+                  }}
+                  aria-label="Add marketplace"
+                  title="Add marketplace"
+                >
+                  <Plus size={12} className="capsule-symbol" />
+                </button>
+              </div>
+            )}
+
+            {addedMarkets.length > 0 && (
+              <div
+                className="market-connect-capsule connected"
+                role="group"
+                aria-label="Connected marketplaces"
+              >
+                {addedMarkets.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className="market-capsule-item"
+                    onClick={() => {
+                      setConnectionMarket(m);
+                      setConnectionOpen(true);
+                    }}
+                    aria-label={
+                      m === "facebook"
+                        ? `${demo ? "Demo · " : ""}Connected`
+                        : `Connected: ${m === "ebay" ? "eBay" : "Kijiji"}`
+                    }
+                    title={`Connected: ${
+                      m === "facebook"
+                        ? "Facebook Marketplace"
+                        : m === "ebay"
+                          ? "eBay"
+                          : "Kijiji"
+                    }`}
+                  >
+                    <PlatformLogo market={m} size={18} />
+                  </button>
+                ))}
+                <span className="capsule-symbol-box" aria-hidden="true">
+                  <Check size={12} className="capsule-symbol check" />
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="nav-vdivider" />
+
           {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
             <AuthControl />
           ) : (
@@ -468,6 +647,7 @@ export function ShoppingApp({
           )}
         </div>
       </header>
+
       <main>
         <section className="search-section">
           <div className="search-heading">
@@ -477,6 +657,7 @@ export function ShoppingApp({
                 : "What are you looking for?"}
             </h1>
           </div>
+
           <form
             className="search-form"
             onSubmit={(e) => {
@@ -489,7 +670,7 @@ export function ShoppingApp({
               void upload(e.dataTransfer.files[0]);
             }}
           >
-            <Search size={21} className="search-input-icon" />
+            <Search size={20} className="search-input-icon" />
             <input
               ref={input}
               aria-label="What are you looking for?"
@@ -498,17 +679,17 @@ export function ShoppingApp({
               placeholder="Try ‘Sony WH-1000XM5 under $250’"
               maxLength={300}
             />
-            <kbd>
-              <Command size={11} /> K
+            <kbd className="search-shortcut">
+              <Command size={10} /> K
             </kbd>
-            <div className="search-input-divider" />
+
             <button
               type="button"
               className="image-upload-button"
               aria-label="Upload a product image"
               onClick={() => file.current?.click()}
             >
-              <ImagePlus size={20} />
+              <ImagePlus size={19} />
             </button>
             <input
               ref={file}
@@ -518,16 +699,19 @@ export function ShoppingApp({
               aria-label="Product image file"
               onChange={(e) => void upload(e.target.files?.[0])}
             />
-            <Button type="submit" disabled={busy || (!query.trim() && !image)}>
-              {busy ? (
-                <Loader2 size={16} className="spin" />
-              ) : (
-                <Sparkles size={16} />
-              )}
-              <span>{busy ? "Searching" : "Find it"}</span>
-              {!busy && <ArrowRight size={16} />}
+
+            <Button
+              type="submit"
+              aria-label="Find it"
+              disabled={busy || (!query.trim() && !image)}
+              className="search-submit-btn"
+            >
+              {busy && <Loader2 size={15} className="spin" />}
+              <span>{busy ? "Searching" : "Find"}</span>
+              {!busy && <ArrowRight size={15} />}
             </Button>
           </form>
+
           {image && (
             <div className="image-preview">
               <img src={image} alt="Uploaded product" />
@@ -549,6 +733,7 @@ export function ShoppingApp({
               </button>
             </div>
           )}
+
           <div className="search-filters">
             <label className="compact-filter">Currency<select aria-label="Currency filter" value={currency} onChange={e=>setCurrency(e.target.value)}><option value="USD">USD</option><option value="CAD">CAD</option></select></label>
             <label className="compact-filter">
@@ -563,9 +748,11 @@ export function ShoppingApp({
                 <option value="ebay">eBay</option>
                 <option value="kijiji">Kijiji</option>
               </select>
+              <ChevronDown size={11} className="filter-dropdown-icon" />
             </label>
-            <label className="compact-filter">
-              <span>$</span>
+
+            <label className="compact-filter price-filter">
+              <span className="price-tag-symbol">$</span>
               <input
                 aria-label="Maximum price"
                 type="number"
@@ -575,27 +762,33 @@ export function ShoppingApp({
                 onChange={(e) => setMaxPrice(e.target.value)}
               />
             </label>
+
             <label className="compact-filter">
+              <ListFilter size={13} />
               <select
                 aria-label="Condition filter"
                 value={condition}
                 onChange={(e) => setCondition(e.target.value)}
               >
                 <option value="any">Any condition</option>
-                <option>Like new</option>
-                <option>Good</option>
-                <option>Fair</option>
+                <option value="Like new">Like new</option>
+                <option value="Good">Good</option>
+                <option value="Fair">Fair</option>
               </select>
+              <ChevronDown size={11} className="filter-dropdown-icon" />
             </label>
+
             <button
-              className="compact-filter"
+              type="button"
+              className="compact-filter location-btn"
               onClick={() => setFilters(!filters)}
             >
               <MapPin size={13} />
-              {location}
-              <ChevronDown size={12} />
+              <span>{location}</span>
+              <ChevronDown size={11} className="filter-dropdown-icon" />
             </button>
           </div>
+
           {filters && (
             <div className="location-popover">
               <label>
@@ -627,6 +820,7 @@ export function ShoppingApp({
               </Button>
             </div>
           )}
+
           {error && (
             <div className="error-state" role="alert">
               {error}
@@ -652,24 +846,46 @@ export function ShoppingApp({
             <Sparkles size={14} /> Live agent {busy && <i />}
           </button>
         </div>
-        <div className={`workspace show-${mobileTab}`}>
+
+        <div className={`workspace show-${mobileTab} ${panelCollapsed ? "panel-collapsed" : ""}`}>
           <section className="results-panel">
             <div className="results-nav">
-              <div>
+              <div className="tab-pill-group">
                 <button
-                  className={!savedOnly ? "active" : ""}
-                  onClick={() => setSavedOnly(false)}
+                  type="button"
+                  className={`tab-pill-btn ${activeTab === "discover" ? "active" : ""}`}
+                  onClick={() => {
+                    setActiveTab("discover");
+                    setSavedOnly(false);
+                  }}
                 >
-                  Discover{state && <span>{listings.length}</span>}
+                  <Compass size={15} />
+                  <span>Discover{state && listings.length > 0 ? ` ${listings.length}` : ""}</span>
                 </button>
                 <button
-                  className={savedOnly ? "active" : ""}
-                  onClick={() => setSavedOnly(true)}
+                  type="button"
+                  className={`tab-pill-btn ${activeTab === "saved" ? "active" : ""}`}
+                  onClick={() => {
+                    setActiveTab("saved");
+                    setSavedOnly(true);
+                  }}
                 >
-                  <Heart size={14} />
-                  Saved{saved.length > 0 && <span>{saved.length}</span>}
+                  <Bookmark size={15} />
+                  <span>Saved{saved.length > 0 ? ` ${saved.length}` : ""}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`tab-pill-btn ${activeTab === "history" ? "active" : ""}`}
+                  onClick={() => {
+                    setActiveTab("history");
+                    setSavedOnly(false);
+                  }}
+                >
+                  <History size={15} />
+                  <span>History</span>
                 </button>
               </div>
+
               {state ? (
                 <label className="sort-control">
                   <ArrowDownUp size={13} />
@@ -685,15 +901,37 @@ export function ShoppingApp({
                 </label>
               ) : null}
             </div>
-            {!state && !busy && !savedOnly ? (
+
+            {activeTab === "history" ? (
+              <div className="history-view">
+                <div className="history-header">
+                  <h3>Recent searches</h3>
+                  <p>Pick up where you left off</p>
+                </div>
+                <div className="history-list">
+                  {recentSearches.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className="history-item-btn"
+                      onClick={() => {
+                        setActiveTab("discover");
+                        void search(s);
+                      }}
+                    >
+                      <Search size={14} className="history-icon" />
+                      <span>{s}</span>
+                      <ArrowRight size={14} className="history-arrow" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : !state && !busy && activeTab === "discover" ? (
               <div className="landing-results">
                 <div className="start-heading">
-                  <div>
-                    <h2>A little inspiration to get started</h2>
-                    <p>Pick a search. Watch your agent get to work.</p>
-                  </div>
-                  <span>↘</span>
+                  <h2>A little inspiration to get started</h2>
                 </div>
+
                 <div className="inspiration-grid">
                   {examples.map((e) => (
                     <button
@@ -709,71 +947,19 @@ export function ShoppingApp({
                             ev.currentTarget.src = "/product.svg";
                           }}
                         />
-                        <span>
-                          <ArrowUpRight size={17} />
+                        <span className="inspiration-action-btn">
+                          <ArrowUpRight size={16} />
                         </span>
                       </div>
                       <div className="inspiration-copy">
-                        <small>{e.price}</small>
-                        <h3>{e.label}</h3>
+                        <small>{e.price}</small>{" "}
+                        <h3>{e.label}</h3>{" "}
                         <p>{e.detail}</p>
                       </div>
                     </button>
                   ))}
                 </div>
-                <button
-                  className="image-prompt"
-                  onClick={() => file.current?.click()}
-                >
-                  <span className="image-prompt-icon">
-                    <ImagePlus size={22} />
-                  </span>
-                  <div>
-                    <strong>Have a picture, not a product name?</strong>
-                    <p>Drop a photo. Haggleface will figure out the rest.</p>
-                  </div>
-                  <ArrowUpRight size={18} />
-                </button>
-                <div className="how-it-works">
-                  <div className="steps">
-                    <div>
-                      <span>01</span>
-                      <h4>You ask.</h4>
-                      <p>
-                        A product, a budget,
-                        <br />
-                        or just a photo.
-                      </p>
-                    </div>
-                    <div>
-                      <span>02</span>
-                      <h4>Haggleface explores.</h4>
-                      <p>
-                        Real browsers search
-                        <br />
-                        across marketplaces.
-                      </p>
-                    </div>
-                    <div>
-                      <span>03</span>
-                      <h4>You get the good deal.</h4>
-                      <p>
-                        Compare, choose, and
-                        <br />
-                        negotiate on your terms.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="landing-bottom">
-                  <div className="stacked-dots">
-                    <span>f</span>
-                    <span>e</span>
-                    <span>k</span>
-                  </div>
-                  <p>Facebook Marketplace, eBay & Kijiji.</p>
-                  <span className="recycle-icon">↺</span>
-                </div>
+
               </div>
             ) : (
               <div className="search-results">
@@ -893,6 +1079,7 @@ export function ShoppingApp({
                       variant="outline"
                       onClick={() => {
                         setSavedOnly(false);
+                        setActiveTab("discover");
                         setMaxPrice("");
                         setCondition("any");
                         setMarket("all");
@@ -919,18 +1106,69 @@ export function ShoppingApp({
               </div>
             )}
           </section>
+
+          <div className="workspace-divider">
+            <button
+              type="button"
+              className="panel-toggle-btn"
+              onClick={() => setPanelCollapsed(!panelCollapsed)}
+              aria-label={panelCollapsed ? "Expand agent preview" : "Collapse agent preview"}
+              title={panelCollapsed ? "Expand agent preview" : "Collapse agent preview"}
+            >
+              {panelCollapsed ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+            </button>
+          </div>
+
           <AgentPanel
             state={state}
             activeMarket={activeMarket}
             setActiveMarket={setActiveMarket}
             onConnect={() => setConnectionOpen(true)}
+            isCollapsed={panelCollapsed}
+            onExpand={() => setPanelCollapsed(false)}
           />
         </div>
         </>}
       </main>
+
       <footer className="page-footer">
+        <p className="footer-disclaimer">
+          {"You're responsible to review your account interactions in Facebook Marketplace, ebay, and Kijiji"}
+        </p>
         <span className="footer-brand">haggleface.</span>
       </footer>
+
+      {/* Info / About Modal */}
+      <Modal
+        open={infoOpen}
+        onOpenChange={setInfoOpen}
+        title="About Haggleface"
+        description="Autonomous AI shopping agents across secondhand marketplaces."
+      >
+        <div className="about-info-modal">
+          <div className="about-info-block">
+            <h4>Real Browser Automation</h4>
+            <p>
+              Haggleface powers searches across Facebook Marketplace, eBay, and Kijiji using isolated cloud browsers managed by Steel.dev.
+            </p>
+          </div>
+          <div className="about-info-block">
+            <h4>No Passwords Stored</h4>
+            <p>
+              You log in directly inside a secure Steel browser tab. Haggleface never stores, inspects, or transmits your account credentials.
+            </p>
+          </div>
+          <div className="about-info-block">
+            <h4>Total Control Over Deals</h4>
+            <p>
+              Your agent can analyze listings and draft negotiating offers, but no message is ever sent to a seller without your explicit review and approval.
+            </p>
+          </div>
+          <Button onClick={() => setInfoOpen(false)}>Close</Button>
+        </div>
+      </Modal>
+
+      {/* Listing Detail Modal */}
       <Modal
         open={!!selected}
         onOpenChange={(v) => {
@@ -1009,6 +1247,8 @@ export function ShoppingApp({
           </div>
         )}
       </Modal>
+
+      {/* Negotiation Modal */}
       <Modal
         open={!!negotiate}
         onOpenChange={(v) => {
@@ -1021,6 +1261,8 @@ export function ShoppingApp({
           <NegotiationSetup key={negotiate.id} listing={negotiate} onStarted={()=>{setNegotiate(null);setWorkspaceTab('negotiations');}} />
         )}
       </Modal>
+
+      {/* Connection Modal */}
       <Modal
         open={connectionOpen}
         onOpenChange={(v) => {
@@ -1035,6 +1277,7 @@ export function ShoppingApp({
             {(["facebook", "ebay", "kijiji"] as const).map((m) => (
               <button
                 key={m}
+                type="button"
                 disabled={!!connectionUrl || connectionBusy}
                 onClick={() => setConnectionMarket(m)}
                 className={connectionMarket === m ? "selected" : ""}
@@ -1091,6 +1334,8 @@ export function ShoppingApp({
           )}
         </div>
       </Modal>
+
+      {/* Profile Modal */}
       <Modal
         open={profileOpen}
         onOpenChange={setProfileOpen}

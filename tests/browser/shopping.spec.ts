@@ -3,15 +3,15 @@ test('search, inspect, save, negotiate, restore and mobile',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(`${m.text()} ${m.location().url}`);});
  await page.goto('/');await expect(page.getByRole('heading',{name:'What are you looking for?'})).toBeVisible();await page.screenshot({path:'test-results/landing-desktop.png',fullPage:true,caret:'initial'});
  await page.getByRole('button',{name:/UNDER \$250 Sony/}).click();
- await expect(page.locator('.listing-card').first()).toBeVisible();expect(await page.locator('.listing-card').count()).toBeLessThan(8);
+ await expect(page.locator('.listing-card').first()).toBeVisible();expect(await page.locator('.listing-card').count()).toBeLessThan(10);
  await expect(page.getByText('Your shortlist is ready',{exact:true}).first()).toBeVisible({timeout:30000});
- await expect(page.locator('.listing-card')).toHaveCount(6);await page.screenshot({path:'test-results/results-desktop.png',fullPage:true});
+ await expect(page.locator('.listing-card')).toHaveCount(7);await page.screenshot({path:'test-results/results-desktop.png',fullPage:true});
   await page.getByLabel('Sort listings').selectOption('price');await expect(page.locator('.listing-card').first().locator('.price-row strong')).toHaveText(/USD\s*165/);
  await page.locator('.listing-card').first().getByRole('button',{name:'Save listing',exact:true}).click();
  await page.getByRole('button',{name:'Saved 1',exact:true}).click();await expect(page.locator('.listing-card')).toHaveCount(1);await page.getByRole('button',{name:'Discover 1',exact:true}).click();
  await page.locator('.listing-card').first().getByRole('button',{name:'Details',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'Inspect with agent'}).click();await expect(page.getByText('Demo inspection',{exact:true})).toBeVisible();await page.screenshot({path:'test-results/detail.png'});await page.keyboard.press('Escape');
   await page.locator('.listing-card').first().getByRole('button',{name:'Negotiate',exact:true}).click();await expect(page.getByRole('button',{name:'Start negotiation',exact:true})).toBeVisible();await page.getByRole('button',{name:'Start negotiation',exact:true}).click();await expect(page.getByRole('heading',{name:'Negotiations',exact:true})).toBeVisible();for(let round=0;round<3;round++)await page.getByRole('button',{name:'Check now',exact:true}).click();await expect(page.getByText('Price agreed',{exact:true})).toBeVisible();await page.reload();await page.getByRole('tab',{name:'Negotiations',exact:true}).click();await expect(page.getByText('Price agreed',{exact:true})).toBeVisible();await page.getByRole('tab',{name:'Listings',exact:true}).click();
- const url=page.url();await page.reload();await expect(page.locator('.listing-card')).toHaveCount(6);expect(page.url()).toBe(url);
+ const url=page.url();await page.reload();await expect(page.locator('.listing-card')).toHaveCount(7);expect(page.url()).toBe(url);
  await page.setViewportSize({width:390,height:844});await expect(page.locator('.agent-panel')).not.toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'test-results/results-mobile.png',fullPage:true,animations:'disabled'});await page.getByRole('button',{name:'Live agent',exact:true}).click();await expect(page.locator('.agent-panel')).toBeVisible();await page.screenshot({path:'test-results/agent-mobile.png',fullPage:true,animations:'disabled'});expect(errors).toEqual([]);
 });
 test('image upload, identification, connection, empty filters and invalid upload',async({page})=>{

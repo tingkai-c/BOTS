@@ -8,3 +8,4 @@ playwright-report
 .clerk/
 .vercel/
 .vercel
+.DS_Store
