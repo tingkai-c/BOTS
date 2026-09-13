@@ -8,9 +8,26 @@ export async function dismissCookies(page:Page){for(const name of ['Decline opti
 const blockTitles=/error page|pardon our interruption|access (to this page has been )?denied|unusual traffic|are you a robot|robot check|verify you are human|security check|just a moment|attention required|request unsuccessful/i;
 const blockMarkers='#px-captcha, .px-captcha-container, iframe[src*="captcha"], #captcha, .g-recaptcha, #cf-challenge-running, [id*="challenge-running"], [id*="challenge-stage"]';
 export async function requireLoginCheck(page:Page,marketplace:Marketplace){
- if(/login|signin|checkpoint|challenge/.test(page.url())||await page.locator('input[name="email"], input[name="login"]').count())throw new Error(`${names[marketplace]} needs you to sign in. Open Connect accounts, then retry.`);
+ // "checkpoint"/"challenge" redirects are usually an anti-bot interstitial, not an actual
+ // login wall — telling the user to "sign in" there is misleading, since reconnecting won't
+ // clear a bot flag. Keep that path's wording distinct from a genuine login/signin redirect.
+ if(/checkpoint|challenge/.test(page.url()))throw new Error(`${names[marketplace]} flagged this browsing session for extra verification. Try again in a moment, or reconnect this marketplace to refresh its identity.`);
+ if(/login|signin/.test(page.url())||await page.locator('input[name="email"], input[name="login"]').count())throw new Error(`${names[marketplace]} needs you to sign in. Open Connect accounts, then retry.`);
  const title=await page.title().catch(()=>'');
  if(blockTitles.test(title)||await page.locator(blockMarkers).count())throw new Error(`${names[marketplace]} blocked this browsing session as automated traffic. Sign in to ${names[marketplace]} in Connect accounts, then retry.`);
+}
+// Marketplaces are client-rendered SPAs: a login redirect or bot-check can appear well after
+// domcontentloaded. Poll for whichever real outcome (results, login wall, block page) shows up
+// first instead of guessing a fixed wait, then let requireLoginCheck turn a gate into an error.
+export async function waitForResultsOrGate(page:Page,marketplace:Marketplace,resultsSelector:string,timeout=15000){
+ try{await page.waitForFunction(({sel,blockSrc,blockSel})=>{
+  if(document.querySelector(sel))return true;
+  if(document.querySelector('input[name="email"], input[name="login"]'))return true;
+  if(new RegExp(blockSrc,'i').test(document.title))return true;
+  if(document.querySelector(blockSel))return true;
+  return false;
+ },{sel:resultsSelector,blockSrc:blockTitles.source,blockSel:blockMarkers},{timeout,polling:250});}catch{/* neither results nor a known gate appeared in time */}
+ await requireLoginCheck(page,marketplace);
 }
 export async function inspectListing(page:Page,listing:Listing){
  await page.goto(validateListingUrl(listing.listingUrl,listing.marketplace),{waitUntil:'domcontentloaded',timeout:20000});await dismissCookies(page);await requireLoginCheck(page,listing.marketplace);validateListingUrl(page.url(),listing.marketplace);
