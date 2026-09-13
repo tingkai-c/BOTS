@@ -49,7 +49,7 @@ import {
 import { photo } from "@/lib/demo/fixtures";
 import { AgentPanel, BrowserView } from "./agent-panel";
 import { ListingCard, MarketplaceBadge, DealScore, money } from "./listings";
-import { NegotiationPanel } from "./negotiation-panel";
+import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver } from './workspace-negotiations';
 import { PlatformLogo } from "./platform-logos";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
@@ -142,7 +142,8 @@ export function ShoppingApp({
   const [image, setImage] = useState<string>();
   const [imageName, setImageName] = useState("");
   const [state, setState] = useState<SearchState | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [requestBusy, setBusy] = useState(false);
+  const busy=requestBusy||Boolean(state&&!state.demo&&['queued','searching','ranking'].includes(state.status));
   const [error, setError] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [condition, setCondition] = useState("any");
@@ -153,7 +154,11 @@ export function ShoppingApp({
   const [sort, setSort] = useState("best");
   const [activeMarket, setActiveMarket] = useState<Marketplace | "all">("all");
   const [mobileTab, setMobileTab] = useState("results");
-  const [selected, setSelected] = useState<RankedListing | null>(null);
+  const [selectedSnapshot, setSelected] = useState<RankedListing | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState('listings');
+  const [negotiatedIds,setNegotiatedIds]=useState<string[]>([]);
+  const [currency, setCurrency] = useState('USD');
+  const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [negotiate, setNegotiate] = useState<RankedListing | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
   const [savedOnly, setSavedOnly] = useState(false);
@@ -216,6 +221,7 @@ export function ShoppingApp({
               setMarket(parsed.filters.marketplace);
               setLocation(parsed.filters.location);
               setRadius(parsed.filters.radius);
+              setCurrency(parsed.filters.currency??'USD');
             }
           } else
             setError(
@@ -261,6 +267,7 @@ export function ShoppingApp({
         setMarket(s.filters.marketplace);
         setLocation(s.filters.location);
         setRadius(s.filters.radius);
+        setCurrency(s.filters.currency??'USD');
       }
     }
   }, []);
@@ -347,6 +354,7 @@ export function ShoppingApp({
             marketplace: market,
             location,
             radius,
+            currency,
           }),
           signal: abort.current.signal,
         }),
@@ -481,8 +489,11 @@ export function ShoppingApp({
   }
 
   const ranked = rankListings(state?.listings || []);
+  const selected=ranked.find(l=>l.id===selectedSnapshot?.id)??selectedSnapshot;
+  async function findMore(listingId?:string){if(!state)return;setDiscoveryBusy(true);try{const result=await readJsonResponse<{demo?:boolean}>(await fetch('/api/workspace/discovery',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspaceId:state.id,listingId})}));if(result.demo)setError('Demo mode has no additional marketplace results.');}catch(e){setError((e as Error).message);}finally{setDiscoveryBusy(false);}}
   let listings = ranked.filter(
     (l) =>
+      l.currency === currency &&
       (market === "all" || l.marketplace === market) &&
       (!maxPrice || l.price <= Number(maxPrice)) &&
       (condition === "any" || l.condition === condition) &&
@@ -499,6 +510,7 @@ export function ShoppingApp({
 
   return (
     <div className="app-shell">
+      {state&&<NegotiationObserver id={state.id} demo={state.demo} onIds={setNegotiatedIds}/>}
       {!demo &&
         (state?.id || initialId) &&
         process.env.NEXT_PUBLIC_CONVEX_URL &&
@@ -723,6 +735,7 @@ export function ShoppingApp({
           )}
 
           <div className="search-filters">
+            <label className="compact-filter">Currency<select aria-label="Currency filter" value={currency} onChange={e=>setCurrency(e.target.value)}><option value="USD">USD</option><option value="CAD">CAD</option></select></label>
             <label className="compact-filter">
               <SlidersHorizontal size={13} />
               <select
@@ -817,7 +830,8 @@ export function ShoppingApp({
             </div>
           )}
         </section>
-
+        {state&&<div className="workspace-tabs" role="tablist" aria-label="Workspace views" onKeyDown={e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const next=workspaceTab==='listings'?'negotiations':'listings';setWorkspaceTab(next);(e.currentTarget.querySelectorAll('[role="tab"]')[next==='listings'?0:1] as HTMLButtonElement).focus();}}}><Button role="tab" aria-selected={workspaceTab==='listings'} onClick={()=>setWorkspaceTab('listings')}>Listings</Button><Button role="tab" aria-selected={workspaceTab==='negotiations'} onClick={()=>setWorkspaceTab('negotiations')}>Negotiations</Button><Button variant="outline" disabled={discoveryBusy||requestBusy} onClick={()=>void findMore()}>{discoveryBusy?'Queuing…':'Find more'}</Button></div>}
+        {state&&workspaceTab==='negotiations'?<WorkspaceNegotiations workspaceId={state.id} listings={state.listings} demo={state.demo}/>:<>
         <div className="mobile-tabs">
           <button
             className={mobileTab === "results" ? "active" : ""}
@@ -1000,7 +1014,7 @@ export function ShoppingApp({
                             ...listings.map(
                               (l) => l.price + (l.shippingCost ?? 0),
                             ),
-                          ),
+                          ), currency,
                         )}
                       </strong>{" "}
                       <i>·</i> {ranked.length} listings compared
@@ -1025,8 +1039,9 @@ export function ShoppingApp({
                         onSelect={() => {
                           setSelected(l);
                           setInspectText("");
+                          if(!l.demo&&!l.inspectedAt)void findMore(l.id);
                         }}
-                        onNegotiate={() => setNegotiate(l)}
+                        onNegotiate={() => negotiatedIds.includes(l.id)?setWorkspaceTab('negotiations'):setNegotiate(l)}
                       />
                     ))}
                   </div>
@@ -1113,6 +1128,7 @@ export function ShoppingApp({
             onExpand={() => setPanelCollapsed(false)}
           />
         </div>
+        </>}
       </main>
 
       <footer className="page-footer">
@@ -1171,7 +1187,7 @@ export function ShoppingApp({
             <MarketplaceBadge marketplace={selected.marketplace} />
             <h3>{selected.title}</h3>
             <div className="detail-price">
-              {money(selected.price)}
+              {money(selected.price,selected.currency)}
               <span>{selected.condition}</span>
             </div>
             <DealScore listing={selected} />
@@ -1179,6 +1195,7 @@ export function ShoppingApp({
               {selected.description ||
                 "No description extracted yet. Inspect the original listing to learn more."}
             </p>
+            {selected.inspectionStatus&&<p className="field-hint">Details: {selected.inspectionStatus}{selected.inspectionError?` · ${selected.inspectionError}`:''}</p>}
             <div className="detail-facts">
               <span>
                 Seller<strong>{selected.sellerName || "Not listed"}</strong>
@@ -1190,17 +1207,17 @@ export function ShoppingApp({
             <div className="detail-actions">
               <Button
                 onClick={() => {
-                  setNegotiate(selected);
+                  if(negotiatedIds.includes(selected.id))setWorkspaceTab('negotiations');else setNegotiate(selected);
                   setSelected(null);
                 }}
               >
                 <Sparkles size={15} />
-                Negotiate
+                {negotiatedIds.includes(selected.id)?'View negotiation':'Set up negotiation'}
               </Button>
               <Button
                 variant="outline"
                 disabled={inspecting}
-                onClick={() => void inspect(selected)}
+                onClick={() => selected.demo?void inspect(selected):void findMore(selected.id)}
               >
                 {inspecting ? (
                   <Loader2 size={14} className="spin" />
@@ -1238,10 +1255,10 @@ export function ShoppingApp({
           if (!v) setNegotiate(null);
         }}
         title="Make a good deal even better."
-        description="Your agent drafts. You have the final say."
+         description="Authorize an ongoing conversation within your limits. Pause or stop at any time."
       >
         {negotiate && (
-          <NegotiationPanel key={negotiate.id} listing={negotiate} />
+          <NegotiationSetup key={negotiate.id} listing={negotiate} onStarted={()=>{setNegotiate(null);setWorkspaceTab('negotiations');}} />
         )}
       </Modal>
 
