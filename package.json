@@ -13,8 +13,6 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "probe:steel": "node scripts/probe-steel.mjs",
-    "probe:agent-browser": "node scripts/probe-agent-browser.mjs",
     "convex:dev": "convex dev"
   },
   "dependencies": {
@@ -43,6 +41,7 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "convex-test": "0.0.58",
     "eslint": "^9.39.5",
     "eslint-config-next": "latest",
     "tailwindcss": "latest",

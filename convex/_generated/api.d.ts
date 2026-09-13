@@ -8,7 +8,10 @@
  * @module
  */
 
+import type * as access from "../access.js";
 import type * as store from "../store.js";
+import type * as validators from "../validators.js";
+import type * as work from "../work.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +20,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  access: typeof access;
   store: typeof store;
+  validators: typeof validators;
+  work: typeof work;
 }>;
 
 /**

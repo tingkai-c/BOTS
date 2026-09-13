@@ -4,10 +4,6 @@ const config: NextConfig = {
   // Playwright loads browsers.json and runtime assets dynamically. Vercel's
   // dependency tracer cannot infer these paths through pnpm's symlink layout.
   outputFileTracingIncludes: {
-    '/api/internal/harness-probe': [
-      './node_modules/.pnpm/agent-browser@*/node_modules/agent-browser/package.json',
-      './node_modules/.pnpm/agent-browser@*/node_modules/agent-browser/bin/agent-browser-linux-x64',
-    ],
     '/api/**': [
       './node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/**/*',
     ],

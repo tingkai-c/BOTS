@@ -10,7 +10,7 @@ export type Listing = z.infer<typeof listingSchema>;
 export type RankedListing = Listing & {dealScore:number;reason:string;belowMedian:number};
 export type AgentEvent = {id:string;message:string;marketplace?:Marketplace;time:number;kind:'action'|'success'|'error'};
 export type Run = {marketplace:Marketplace;status:'queued'|'searching'|'complete'|'failed'|'login_required';debugUrl?:string;sessionId?:string;message:string};
-export type SearchState = {id:string;query:string;status:'queued'|'searching'|'ranking'|'complete'|'failed';demo:boolean;listings:Listing[];events:AgentEvent[];runs:Run[];identification?:Identification;summary?:string;filters?:Omit<SearchInput,'image'|'query'>};
+export type SearchState = {id:string;query:string;queryKind?:'text'|'image';status:'queued'|'searching'|'ranking'|'complete'|'failed';demo:boolean;listings:Listing[];events:AgentEvent[];runs:Run[];identification?:Identification;summary?:string;filters?:Omit<SearchInput,'image'|'query'>};
 export type StreamEvent = {type:'state';state:SearchState}|{type:'listing';listing:Listing}|{type:'event';event:AgentEvent}|{type:'run';run:Run}|{type:'identification';identification:Identification}|{type:'status';status:SearchState['status']}|{type:'summary';text:string}|{type:'error';message:string};
 export const offerSchema=z.object({listing:listingSchema,desiredPrice:z.number().positive(),maxPrice:z.number().positive(),tone:z.enum(['Friendly','Direct','Flexible'])}).refine(v=>v.desiredPrice<=v.maxPrice,{message:'Your opening offer must be at or below your maximum.'});
 export const approvalSchema=z.object({token:z.string().min(1),message:z.string().trim().min(5).max(2000),approved:z.literal(true)});
