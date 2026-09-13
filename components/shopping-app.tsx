@@ -51,6 +51,7 @@ import type {
 } from "@/lib/schemas";
 import { deduplicate, rankListings } from "@/lib/scoring";
 import { detectListingUrl } from "@/lib/marketplaces/shared";
+import { inspectionSummary } from "@/lib/marketplaces/inspection-state";
 import {
   readStream,
   readJsonResponse,
@@ -1896,10 +1897,10 @@ export function ShoppingApp({
             </div>
             <DealScore listing={selected} />
             <p>
-              {selected.description ||
+              {selected.description?.trim() ||
                 "No description extracted yet. Inspect the original listing to learn more."}
             </p>
-            {selected.inspectionStatus&&<p className="field-hint">Details: {selected.inspectionStatus}{selected.inspectionError?` · ${selected.inspectionError}`:''}</p>}
+            {selected.inspectionStatus&&<p className="field-hint" role="status">Details: {inspectionSummary(selected)}</p>}
             <div className="detail-facts">
               <span>
                 <span className="fact-label">Seller</span>

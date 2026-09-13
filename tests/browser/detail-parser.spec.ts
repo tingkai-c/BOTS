@@ -19,6 +19,15 @@ test('title-only page is not a complete inspection', async ({ page }) => {
   expect(result.currencyVerified).toBe(false);
 });
 
+test('sold availability is preserved without falsely reporting a complete description', async ({ page }) => {
+  await page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: '<h1>Herman Miller Aeron Chair</h1><p>This listing has sold</p>' }));
+  const result = await inspectListing(page, listing());
+  expect(result.availability).toBe('sold');
+  expect(result.description).toBe('');
+  expect(result.inspectionStatus).toBe('failed');
+  expect(result.inspectionError).toContain('Listing sold');
+});
+
 test('Facebook reads delayed semantic description, condition and seller', async ({ page }) => {
   const details = `<section><h2>Description</h2><div>Mesh chair.<button onclick="this.parentElement.textContent='Mesh chair. All adjustments work.'">See more</button></div></section><section><h2>Condition</h2><span>Used - Good</span></section><section><h2>Seller information</h2><a href="/marketplace/profile/456/">Alex Seller</a></section>`;
   await page.route('**/*', route => route.fulfill({ contentType: 'text/html', body: `

@@ -8,6 +8,7 @@ import { searchFacebookMarketplace } from '@/lib/marketplaces/facebook/search';
 import { searchKijiji } from '@/lib/marketplaces/kijiji/search';
 import { extractCards } from '@/lib/marketplaces/cards';
 import { inspectListing, MarketplaceGateError } from '@/lib/marketplaces/shared';
+import { needsDetailInspection } from '@/lib/marketplaces/inspection-state';
 import { recoverBrowser } from '@/lib/steel/recovery';
 const adapters={ebay:searchEbay,facebook:searchFacebookMarketplace,kijiji:searchKijiji};
 
@@ -42,10 +43,10 @@ export async function runDiscovery(id:string){
     }
     if(!collected.size){const body=await page.locator('body').innerText({timeout:3000});if(!/no results|no listings|couldn.t find|0 results/i.test(body)){if(await recoverBrowser(page,job.marketplace,session.id,'Recover listing extraction'))await extractCards(page,job.marketplace,state.id,term,add);if(!collected.size)throw new Error('The marketplace layout could not be read. Reconnect or try again.');}}
    }
-   const pending=job.kind==='inspection'?[collected.get(job.listingId!)].filter((l):l is Listing=>!!l):[...collected.values()].filter(l=>!l.inspectedAt);
+    const pending=job.kind==='inspection'?[collected.get(job.listingId!)].filter((l):l is Listing=>!!l):[...collected.values()].filter(needsDetailInspection);
    for(const listing of pending){if(Date.now()-started>180_000){remaining=true;break;}
     try{let detail:Listing;try{detail=await inspectListing(page,listing);}catch(e){if(!await recoverBrowser(page,job.marketplace,session.id,'Recover product detail extraction'))throw e;detail=await inspectListing(page,listing);}collected.set(detail.id,detail);await progress({listing:detail});}
-    catch{const failed:Listing={...listing,inspectionStatus:'failed',inspectionError:'Details could not be verified. Open the original or retry inspection.',inspectedAt:Date.now()};collected.set(failed.id,failed);await progress({listing:failed});}
+    catch(e){const failed:Listing={...listing,inspectionStatus:'failed',inspectionError:e instanceof MarketplaceGateError?e.message:'Details could not be verified. Open the original or retry inspection.',inspectedAt:Date.now()};collected.set(failed.id,failed);await progress({listing:failed});}
    }
    if(added>=30)remaining=true;
    if(!remaining&&cursor.noProgressCount>=2&&cursor.queryIndex+1<queries.length){cursor.queryIndex++;cursor.offset=0;cursor.noProgressCount=0;remaining=true;}
