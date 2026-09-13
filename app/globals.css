@@ -503,6 +503,31 @@ main {
   background: #1c3d28;
 }
 
+.search-submit-btn.import-mode {
+  background: #224c25;
+  color: #ffffff;
+}
+
+.search-submit-btn.import-mode:hover {
+  background: #19381c;
+}
+
+.search-detected-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #eef5ea;
+  border: 1px solid #c9dcc2;
+  color: #2b4c22;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  animation: fadeIn 0.2s ease;
+}
+
 /* Image preview chip */
 .image-preview {
   display: flex;
@@ -2034,6 +2059,27 @@ body.is-resizing .agent-panel {
   font-weight: 700;
   padding: 4px 6px;
   border-radius: 4px;
+}
+.imported-pill {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  background: #1f3f1a;
+  color: #ffffff;
+  border: 1px solid #162f13;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 4px 7px;
+  border-radius: 4px;
+  z-index: 3;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.top-pick + .imported-pill {
+  top: 36px;
 }
 .image-condition {
   position: absolute;

@@ -662,7 +662,7 @@ export function AgentPanel({
             <div className="all-activity-grid">
               {MARKETS.map((m) => {
                 const mEvents =
-                  state?.events.filter((e) => e.marketplace === m) || [];
+                  state?.events.filter((e) => !e.marketplace || e.marketplace === m) || [];
                 const mRun = state?.runs.find((r) => r.marketplace === m);
                 const isMBrowsing = mRun?.status === "searching";
                 const config = MARKET_CONFIG[m];
@@ -808,7 +808,7 @@ export function AgentPanel({
                 <div className="all-activity-grid in-modal">
                   {MARKETS.map((m) => {
                     const mEvents =
-                      state?.events.filter((e) => e.marketplace === m) || [];
+                      state?.events.filter((e) => !e.marketplace || e.marketplace === m) || [];
                     const mRun = state?.runs.find((r) => r.marketplace === m);
                     const isMBrowsing = mRun?.status === "searching";
                     const config = MARKET_CONFIG[m];
