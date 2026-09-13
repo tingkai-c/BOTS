@@ -8,6 +8,7 @@ import { searchEbay } from '@/lib/marketplaces/ebay/search';
 import { searchFacebookMarketplace } from '@/lib/marketplaces/facebook/search';
 import { searchKijiji } from '@/lib/marketplaces/kijiji/search';
 import { deduplicate, rankListings } from '@/lib/scoring';
+import { MarketplaceGateError } from '@/lib/marketplaces/shared';
 import { listingSchema, marketplaceSchema, type SearchInput, type SearchState, type StreamEvent, type Marketplace, type Listing, type Run } from '@/lib/schemas';
 const sleep=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 const searchAdapters={ebay:searchEbay,facebook:searchFacebookMarketplace,kijiji:searchKijiji} as const;
@@ -25,7 +26,7 @@ export async function orchestrate(state:SearchState,input:SearchInput,user:strin
  if(state.demo){await sleep(marketplace==='ebay'?1600:900);await event(`Searched “${product.searchQueries[0]}”`,marketplace);for(const listing of fixtures.filter(l=>l.marketplace===marketplace)){await sleep(650);await add(listing);await event(`Found ${listing.title}`,marketplace,'success');}}
  else {const profile=await connection(user,marketplace);const session=await createSession(profile?.profileId);sessionId=session.id;await run({marketplace,status:'searching',message:'Browser connected · searching listings',sessionId,debugUrl:viewerUrl(session.debugUrl)});const {browser,page}=await connectBrowser(session.id);try{await event(`Searched “${product.searchQueries[0]}”`,marketplace);await searchAdapters[marketplace](page,state.id,product.searchQueries[0],input,add);}finally{await browser.close().catch(()=>{});}}
  const count=state.listings.filter(l=>l.marketplace===marketplace).length;await run({marketplace,status:'complete',message:`${count} listings found · session finished`});await event(`${count} listings found on ${marketplaceName(marketplace,true)}`,marketplace,'success');return {count};
- }catch(e){const message=e instanceof Error?e.message:'Marketplace unavailable. Try again.';await run({marketplace,status:/sign in/i.test(message)?'login_required':'failed',message});await event(message,marketplace,'error');return {error:message};}finally{if(sessionId)await releaseSession(sessionId).catch(()=>{});}};
+ }catch(e){const message=e instanceof Error?e.message:'Marketplace unavailable. Try again.';await run({marketplace,status:e instanceof MarketplaceGateError?'login_required':'failed',message});await event(message,marketplace,'error');return {error:message};}finally{if(sessionId)await releaseSession(sessionId).catch(()=>{});}};
  const markets=state.runs.map(r=>r.marketplace);
  // Deterministic parallel execution guarantees all selected sources run. Model tools
  // consume the same bounded operations and cannot browse arbitrary URLs or send messages.

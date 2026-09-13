@@ -7,14 +7,19 @@ export function validateListingUrl(raw:string,marketplace:Marketplace){const u=n
 export async function dismissCookies(page:Page){for(const name of ['Decline optional cookies','Only allow essential cookies','Reject all','Accept all']){const b=page.getByRole('button',{name,exact:true});if(await b.count()){await b.first().click({timeout:1500}).catch(()=>{});break;}}}
 const blockTitles=/error page|pardon our interruption|access (to this page has been )?denied|unusual traffic|are you a robot|robot check|verify you are human|security check|just a moment|attention required|request unsuccessful/i;
 const blockMarkers='#px-captcha, .px-captcha-container, iframe[src*="captcha"], #captcha, .g-recaptcha, #cf-challenge-running, [id*="challenge-running"], [id*="challenge-stage"]';
+// Callers need to tell "reconnect this account" states apart from generic failures without
+// re-parsing message text (matching on wording is exactly what broke last time the copy changed).
+// kind stays coarse-grained: sign_in, challenge, and blocked all resolve the same way in the UI
+// (reconnect the marketplace), they just explain *why* differently.
+export class MarketplaceGateError extends Error{constructor(message:string,public readonly kind:'sign_in'|'challenge'|'blocked'){super(message);this.name='MarketplaceGateError';}}
 export async function requireLoginCheck(page:Page,marketplace:Marketplace){
  // "checkpoint"/"challenge" redirects are usually an anti-bot interstitial, not an actual
  // login wall — telling the user to "sign in" there is misleading, since reconnecting won't
  // clear a bot flag. Keep that path's wording distinct from a genuine login/signin redirect.
- if(/checkpoint|challenge/.test(page.url()))throw new Error(`${names[marketplace]} flagged this browsing session for extra verification. Try again in a moment, or reconnect this marketplace to refresh its identity.`);
- if(/login|signin/.test(page.url())||await page.locator('input[name="email"], input[name="login"]').count())throw new Error(`${names[marketplace]} needs you to sign in. Open Connect accounts, then retry.`);
+ if(/checkpoint|challenge/.test(page.url()))throw new MarketplaceGateError(`${names[marketplace]} flagged this browsing session for extra verification. Try again in a moment, or reconnect this marketplace to refresh its identity.`,'challenge');
+ if(/login|signin/.test(page.url())||await page.locator('input[name="email"], input[name="login"]').count())throw new MarketplaceGateError(`${names[marketplace]} needs you to sign in. Open Connect accounts, then retry.`,'sign_in');
  const title=await page.title().catch(()=>'');
- if(blockTitles.test(title)||await page.locator(blockMarkers).count())throw new Error(`${names[marketplace]} blocked this browsing session as automated traffic. Sign in to ${names[marketplace]} in Connect accounts, then retry.`);
+ if(blockTitles.test(title)||await page.locator(blockMarkers).count())throw new MarketplaceGateError(`${names[marketplace]} blocked this browsing session as automated traffic. Sign in to ${names[marketplace]} in Connect accounts, then retry.`,'blocked');
 }
 // Marketplaces are client-rendered SPAs: a login redirect or bot-check can appear well after
 // domcontentloaded. Poll for whichever real outcome (results, login wall, block page) shows up
