@@ -567,15 +567,19 @@ export function ShoppingApp({
   const selected=ranked.find(l=>l.id===selectedSnapshot?.id)??selectedSnapshot;
   const topFacebookDeals = ranked.filter((l) => l.marketplace === "facebook").slice(0, 5);
   useEffect(() => {
-    if (state?.status === "complete" && topFacebookDeals.length > 0 && reviewShownFor !== state.id) {
+    if (!state || reviewShownFor === state.id || topFacebookDeals.length === 0) return;
+    // Facebook discovery can keep scrolling up new listings indefinitely (no cumulative cap in
+    // lib/agents/discovery.ts), so state.status can stay 'searching' forever — don't gate the
+    // review on full completion. Show it as soon as there's a full 5 to review, or once the
+    // search settles one way or another with at least one Facebook listing.
+    const searchSettled = state.status === "complete" || state.status === "failed";
+    if (searchSettled || topFacebookDeals.length >= 5) {
       setReviewShownFor(state.id);
       setReviewDecisions({});
       setReviewErrors({});
       setReviewOpen(true);
     }
-    // topFacebookDeals is derived from state on every render; only state identity/status should retrigger this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state?.status, state?.id]);
+  }, [state, reviewShownFor, topFacebookDeals.length]);
   async function likeDeal(listing: RankedListing) {
     setReviewBusyId(listing.id);
     setReviewErrors((e) => { const next = { ...e }; delete next[listing.id]; return next; });
