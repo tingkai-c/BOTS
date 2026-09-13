@@ -14,7 +14,7 @@ export const invoke=internalAction({args:{kind:v.union(v.literal('discovery'),v.
  const url=process.env.WORKSPACE_WORKER_URL;const secret=process.env.CONVEX_SERVER_SECRET;
  if(!url||!secret)return;
  const target=new URL(url);if(target.protocol!=='https:'||!target.hostname.endsWith('.vercel.app')||target.pathname!=='/api/workspace/worker')throw new Error('Select a supported Vercel workspace worker.');
- try{const response=await fetch(url,{method:'POST',headers:{authorization:`Bearer ${secret}`,'Content-Type':'application/json'},body:JSON.stringify(a),signal:AbortSignal.timeout(280_000)});if(!response.ok)console.error(`Workspace worker returned ${response.status}; persisted claims will recover.`);}catch{console.error('Workspace worker unavailable; persisted claims will recover.');}
+ try{const response=await fetch(url,{method:'POST',headers:{authorization:`Bearer ${secret}`,'Content-Type':'application/json'},body:JSON.stringify(a),signal:AbortSignal.timeout(280_000)});if(!response.ok)console.error(`Workspace worker returned ${response.status}; persisted claims will recover.`,await response.text().catch(()=>''));}catch(e){console.error('Workspace worker unavailable; persisted claims will recover.',e);}
 }});
 export const accountWork=mutation({args:{secret:v.string(),id:v.id('accountMonitoring'),generation:v.number()},handler:async(ctx,a)=>{
  authorizeServer(a.secret);const account=await ctx.db.get(a.id);if(!account||account.generation!==a.generation||(account.leaseExpiresAt??0)<=Date.now())return null;

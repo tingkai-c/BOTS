@@ -28,7 +28,12 @@ export async function runMonitoring(id:string,generation:number){
  const payload=await mutate<{account:Doc<'accountMonitoring'>;work:{thread:Doc<'threads'>;listing:Listing}[]}|null>('dispatcher:accountWork',{id,generation});if(!payload)return;
  const started=Date.now();let sessionId:string|undefined;let cursor:string|undefined;
  try{if(!payload.work.length)return;const session=await createSession(payload.account.profileId);sessionId=session.id;await mutate('dispatcher:browser',{id,generation,debugUrl:viewerUrl(session.debugUrl)});const {browser,page}=await connectBrowser(session.id);page.setDefaultTimeout(5000);
-  try{for(let i=0;i<payload.work.length;i++){const {thread,listing:raw}=payload.work[i];if(Date.now()-started>180_000){cursor=payload.work[i-1]?.thread.key??payload.account.cursor;break;}
+  try{for(let i=0;i<payload.work.length;i++){const {thread,listing:raw}=payload.work[i];
+   // Steel hard-kills the session at 300s (lib/steel/sessions.ts) with no extend/keep-alive API, so this
+   // must stop starting new work with a large safety margin, not just short of the ceiling — a thread
+   // started right at the old 180s mark (proxy latency + 25s LLM call + send/confirm polling) could still
+   // be mid-operation when Steel severs the connection, which surfaced as an unexplained "cuts off" chat.
+   if(Date.now()-started>120_000){cursor=payload.work[i-1]?.thread.key??payload.account.cursor;break;}
    const args={userId:thread.userId,key:thread.key};
    try{
     const settings=negotiationSettings.parse(thread.settings);if(!verifyAuthorization(thread.userId,thread.key,thread.version,settings,thread.signature))throw new Error('Authorization signature is invalid.');
@@ -46,7 +51,8 @@ export async function runMonitoring(id:string,generation:number){
      });
      if(sent){await mutate('conversations:finishSend',{...args,attemptId,confirmed:true,sourceId:sent.sourceId});if(decision.action==='confirm')await notifyIfAgreed(args,listing,settings);}
     }catch{if(claimed)await mutate('conversations:finishSend',{...args,attemptId,confirmed:false});else throw new Error('The conversation changed before sending. Review and resume.');}
-   }catch{await mutate('conversations:attention',{...args,reason:'The marketplace conversation, availability, currency, or authorization could not be verified. Review the conversation and reconnect or update limits before resuming.'});}
+   }catch(e){console.error('[monitoring:thread]',{accountId:id,generation,threadKey:thread.key},e);await mutate('conversations:attention',{...args,reason:'The marketplace conversation, availability, currency, or authorization could not be verified. Review the conversation and reconnect or update limits before resuming.'});}
   }}finally{await browser.close().catch(()=>{});}
- }finally{if(sessionId)await releaseSession(sessionId).catch(()=>{});await mutate('dispatcher:finish',{id,generation,cursor,idle:!payload.work.length});}
+ }catch(e){console.error('[monitoring:session]',{accountId:id,generation,sessionId},e);throw e;}
+ finally{if(sessionId)await releaseSession(sessionId).catch(()=>{});await mutate('dispatcher:finish',{id,generation,cursor,idle:!payload.work.length});}
 }
