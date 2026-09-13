@@ -1,5 +1,5 @@
 "use client";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useState, useRef, useCallback, useEffect } from "react";
 import {
   ArrowUpRight,
   Circle,
@@ -12,7 +12,7 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
-import type { Marketplace, SearchState, Listing, Run } from "@/lib/schemas";
+import type { Marketplace, SearchState, Listing, Run, AgentEvent } from "@/lib/schemas";
 import { Modal } from "./ui/dialog";
 import { PlatformLogo } from "./platform-logos";
 
@@ -319,6 +319,133 @@ function MarketBrowserCard({
   );
 }
 
+interface ActivityLogViewProps {
+  events: AgentEvent[];
+  compact?: boolean;
+  isBrowsing?: boolean;
+  placeholderCount?: number;
+}
+
+export function ActivityLogView({
+  events,
+  compact = false,
+  isBrowsing = false,
+  placeholderCount = 3,
+}: ActivityLogViewProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const isNearBottomRef = useRef(true);
+
+  const checkScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    setCanScrollUp(el.scrollTop > 2);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setCanScrollDown(distanceFromBottom > 2);
+    isNearBottomRef.current = distanceFromBottom < 20;
+  }, []);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    if (isNearBottomRef.current || events.length <= 6) {
+      el.scrollTop = el.scrollHeight;
+    }
+    checkScroll();
+  }, [events.length, checkScroll]);
+
+  const showTopShadow = events.length >= 6 && canScrollUp;
+  const showBottomShadow = events.length >= 6 && canScrollDown;
+
+  if (events.length === 0) {
+    return (
+      <div className={`activity-list ${compact ? "compact " : ""}activity-idle`}>
+        {Array.from({ length: placeholderCount }).map((_, idx) => (
+          <div key={idx} className="activity-item placeholder">
+            <span className="activity-bullet">
+              <Circle size={compact ? 6 : 8} />
+            </span>
+            <span
+              className={`dashed-placeholder ${
+                idx === 0 ? "short" : idx === 1 ? "medium" : "long"
+              }`}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`activity-log-container ${showTopShadow ? "has-top-shadow" : ""} ${showBottomShadow ? "has-bottom-shadow" : ""}`}
+    >
+      <div
+        className={`activity-log-top-shadow ${showTopShadow ? "visible" : ""}`}
+        aria-hidden="true"
+      />
+      <div
+        className={`activity-log-bottom-shadow ${showBottomShadow ? "visible" : ""}`}
+        aria-hidden="true"
+      />
+      <div
+        ref={listRef}
+        onScroll={checkScroll}
+        className={`activity-list scrollable ${compact ? "compact" : ""}`}
+        aria-live="polite"
+      >
+        {events.map((e, idx) => {
+          const isLatest = idx === events.length - 1 && isBrowsing;
+          if (compact) {
+            return (
+              <div
+                key={e.id}
+                className={`activity-item compact ${e.kind === "error" ? "error" : ""}`}
+              >
+                <span className={`activity-bullet ${isLatest ? "current" : ""}`}>
+                  <Circle size={6} fill="currentColor" />
+                </span>
+                <div className="activity-compact-body">
+                  <p className="activity-text" title={e.message}>
+                    {e.message}
+                  </p>
+                  <time className="activity-time">
+                    {new Date(e.time).toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })}
+                  </time>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={e.id}
+              className={`activity-item ${e.kind === "error" ? "error" : ""}`}
+            >
+              <span className={`activity-bullet ${isLatest ? "current" : ""}`}>
+                <Circle size={8} fill="currentColor" />
+              </span>
+              <p className="activity-text">{e.message}</p>
+              <time className="activity-time">
+                {new Date(e.time).toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                })}
+              </time>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function AgentPanel({
   state,
   activeMarket,
@@ -365,8 +492,7 @@ export function AgentPanel({
     activeMarket === "all"
       ? []
       : state?.events
-          .filter((e) => !e.marketplace || e.marketplace === activeMarket)
-          .slice(-5) || [];
+          .filter((e) => !e.marketplace || e.marketplace === activeMarket) || [];
 
   const mainStatus =
     activeMarket === "all"
@@ -542,7 +668,6 @@ export function AgentPanel({
                 const config = MARKET_CONFIG[m];
                 const mListings =
                   state?.listings.filter((l) => l.marketplace === m) || [];
-                const recentEvents = mEvents.slice(-4);
                 return (
                   <div key={m} className="activity-column">
                     <div className="activity-column-header">
@@ -566,55 +691,12 @@ export function AgentPanel({
                                 : "Ready"}
                       </span>
                     </div>
-                    {recentEvents.length ? (
-                      <div className="activity-list compact" aria-live="polite">
-                        {recentEvents.map((e, idx) => (
-                          <div
-                            key={e.id}
-                            className={`activity-item compact ${
-                              e.kind === "error" ? "error" : ""
-                            }`}
-                          >
-                            <span
-                              className={`activity-bullet ${
-                                idx === recentEvents.length - 1 && isMBrowsing
-                                  ? "current"
-                                  : ""
-                              }`}
-                            >
-                              <Circle size={6} fill="currentColor" />
-                            </span>
-                            <div className="activity-compact-body">
-                              <p className="activity-text" title={e.message}>
-                                {e.message}
-                              </p>
-                              <time className="activity-time">
-                                {new Date(e.time).toLocaleTimeString("en-US", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  hour12: false,
-                                })}
-                              </time>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="activity-list compact activity-idle">
-                        <div className="activity-item placeholder">
-                          <span className="activity-bullet">
-                            <Circle size={6} />
-                          </span>
-                          <span className="dashed-placeholder short" />
-                        </div>
-                        <div className="activity-item placeholder">
-                          <span className="activity-bullet">
-                            <Circle size={6} />
-                          </span>
-                          <span className="dashed-placeholder medium" />
-                        </div>
-                      </div>
-                    )}
+                    <ActivityLogView
+                      events={mEvents}
+                      compact={true}
+                      isBrowsing={isMBrowsing}
+                      placeholderCount={2}
+                    />
                   </div>
                 );
               })}
@@ -623,57 +705,11 @@ export function AgentPanel({
         ) : (
           <div className="activity-log-section">
             <div className="activity-log-heading">ACTIVITY LOG</div>
-            {singleEvents.length ? (
-              <div className="activity-list" aria-live="polite">
-                {singleEvents.map((e, i) => (
-                  <div
-                    key={e.id}
-                    className={`activity-item ${
-                      e.kind === "error" ? "error" : ""
-                    }`}
-                  >
-                    <span
-                      className={`activity-bullet ${
-                        i === singleEvents.length - 1 && isSingleBrowsing
-                          ? "current"
-                          : ""
-                      }`}
-                    >
-                      <Circle size={8} fill="currentColor" />
-                    </span>
-                    <p className="activity-text">{e.message}</p>
-                    <time className="activity-time">
-                      {new Date(e.time).toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false,
-                      })}
-                    </time>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="activity-list activity-idle">
-                <div className="activity-item placeholder">
-                  <span className="activity-bullet">
-                    <Circle size={8} />
-                  </span>
-                  <span className="dashed-placeholder short" />
-                </div>
-                <div className="activity-item placeholder">
-                  <span className="activity-bullet">
-                    <Circle size={8} />
-                  </span>
-                  <span className="dashed-placeholder medium" />
-                </div>
-                <div className="activity-item placeholder">
-                  <span className="activity-bullet">
-                    <Circle size={8} />
-                  </span>
-                  <span className="dashed-placeholder long" />
-                </div>
-              </div>
-            )}
+            <ActivityLogView
+              events={singleEvents}
+              isBrowsing={isSingleBrowsing}
+              placeholderCount={3}
+            />
           </div>
         )}
       </div>
@@ -778,7 +814,6 @@ export function AgentPanel({
                     const config = MARKET_CONFIG[m];
                     const mListings =
                       state?.listings.filter((l) => l.marketplace === m) || [];
-                    const recentEvents = mEvents.slice(-5);
                     return (
                       <div key={m} className="activity-column">
                         <div className="activity-column-header">
@@ -802,65 +837,12 @@ export function AgentPanel({
                                     : "Ready"}
                           </span>
                         </div>
-                        {recentEvents.length ? (
-                          <div
-                            className="activity-list compact"
-                            aria-live="polite"
-                          >
-                            {recentEvents.map((e, idx) => (
-                              <div
-                                key={e.id}
-                                className={`activity-item compact ${
-                                  e.kind === "error" ? "error" : ""
-                                }`}
-                              >
-                                <span
-                                  className={`activity-bullet ${
-                                    idx === recentEvents.length - 1 &&
-                                    isMBrowsing
-                                      ? "current"
-                                      : ""
-                                  }`}
-                                >
-                                  <Circle size={6} fill="currentColor" />
-                                </span>
-                                <div className="activity-compact-body">
-                                  <p
-                                    className="activity-text"
-                                    title={e.message}
-                                  >
-                                    {e.message}
-                                  </p>
-                                  <time className="activity-time">
-                                    {new Date(e.time).toLocaleTimeString(
-                                      "en-US",
-                                      {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                        hour12: false,
-                                      },
-                                    )}
-                                  </time>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="activity-list compact activity-idle">
-                            <div className="activity-item placeholder">
-                              <span className="activity-bullet">
-                                <Circle size={6} />
-                              </span>
-                              <span className="dashed-placeholder short" />
-                            </div>
-                            <div className="activity-item placeholder">
-                              <span className="activity-bullet">
-                                <Circle size={6} />
-                              </span>
-                              <span className="dashed-placeholder medium" />
-                            </div>
-                          </div>
-                        )}
+                        <ActivityLogView
+                          events={mEvents}
+                          compact={true}
+                          isBrowsing={isMBrowsing}
+                          placeholderCount={2}
+                        />
                       </div>
                     );
                   })}
