@@ -346,11 +346,14 @@ export function ShoppingApp({
     // 5-result trigger
     const newThisRound = current - roundStartCount.current;
     if (newThisRound >= 5) {
-      if (!pauseRef.current) {
-        let res: () => void = () => {};
-        const p = new Promise<void>((r) => { res = r; });
-        pauseRef.current = { promise: p, resolve: res };
+      abort.current?.abort();
+      activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+      activeAgentSearches.current.clear();
+      if (pauseRef.current) {
+        pauseRef.current.resolve();
+        pauseRef.current = null;
       }
+      setBusy(false);
       setDecisionPaused(true);
       setDecisionListings(ranked.slice(0, 5));
       setDecisionOpen(true);
@@ -358,11 +361,21 @@ export function ShoppingApp({
         if (!s) return s;
         return {
           ...s,
+          status: s.listings.length > 0 ? "complete" : "failed",
           runs: s.runs.map((r) =>
             r.status === "searching" || r.status === "queued"
-              ? { ...r, status: "paused", message: "Search paused at decision gate" }
+              ? { ...r, status: "paused" as const, message: "Search stopped at decision gate" }
               : r,
           ),
+          events: [
+            ...s.events,
+            {
+              id: crypto.randomUUID(),
+              time: Date.now(),
+              kind: "action",
+              message: "Search stopped at decision gate",
+            },
+          ],
         };
       });
       return;
@@ -374,11 +387,14 @@ export function ShoppingApp({
       if (Date.now() - lastResultAt.current >= 10_000 && !decisionOpen) {
         const snap = rankListings(state?.listings || []);
         if (snap.length > 0) {
-          if (!pauseRef.current) {
-            let res: () => void = () => {};
-            const p = new Promise<void>((r) => { res = r; });
-            pauseRef.current = { promise: p, resolve: res };
+          abort.current?.abort();
+          activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+          activeAgentSearches.current.clear();
+          if (pauseRef.current) {
+            pauseRef.current.resolve();
+            pauseRef.current = null;
           }
+          setBusy(false);
           setDecisionPaused(true);
           setDecisionListings(snap.slice(0, 5));
           setDecisionOpen(true);
@@ -386,11 +402,21 @@ export function ShoppingApp({
             if (!s) return s;
             return {
               ...s,
+              status: s.listings.length > 0 ? "complete" : "failed",
               runs: s.runs.map((r) =>
                 r.status === "searching" || r.status === "queued"
-                  ? { ...r, status: "paused", message: "Search paused at decision gate" }
+                  ? { ...r, status: "paused" as const, message: "Search stopped at decision gate" }
                   : r,
               ),
+              events: [
+                ...s.events,
+                {
+                  id: crypto.randomUUID(),
+                  time: Date.now(),
+                  kind: "action",
+                  message: "Search stopped at decision gate",
+                },
+              ],
             };
           });
         }
@@ -670,7 +696,7 @@ export function ShoppingApp({
       pauseRef.current = null;
     }
     setBusy(false);
-    setDecisionPaused(false);
+    setDecisionPaused(true);
     setResumedSearching(false);
     setState((s) => {
       if (!s) return s;
@@ -679,7 +705,7 @@ export function ShoppingApp({
         status: s.listings.length > 0 ? "complete" : "failed",
         runs: s.runs.map((r) =>
           r.status === "searching" || r.status === "queued"
-            ? { ...r, status: "complete" as const, message: "Search stopped by user" }
+            ? { ...r, status: "paused" as const, message: "Search stopped by user" }
             : r,
         ),
         events: [
@@ -734,6 +760,9 @@ export function ShoppingApp({
       pauseRef.current.resolve();
       pauseRef.current = null;
     }
+    abort.current?.abort();
+    activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+    activeAgentSearches.current.clear();
     setDecisionPaused(false);
     setResumedSearching(false);
     setPausedMarkets(new Set());
@@ -1232,7 +1261,7 @@ export function ShoppingApp({
                 aria-label="Maximum price"
                 type="number"
                 min="1"
-                placeholder="Any price"
+                placeholder="Max price: Any"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(e.target.value)}
               />
@@ -1368,14 +1397,29 @@ export function ShoppingApp({
                       type="button"
                       className="decide-btn"
                       onClick={() => {
-                        if (busy && !pauseRef.current) {
-                          let res: () => void = () => {};
-                          const p = new Promise<void>((r) => { res = r; });
-                          pauseRef.current = { promise: p, resolve: res };
-                          setDecisionPaused(true);
+                        abort.current?.abort();
+                        activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+                        activeAgentSearches.current.clear();
+                        if (pauseRef.current) {
+                          pauseRef.current.resolve();
+                          pauseRef.current = null;
                         }
+                        setBusy(false);
+                        setDecisionPaused(true);
                         setDecisionListings(ranked.slice(0, 5));
                         setDecisionOpen(true);
+                        setState((s) => {
+                          if (!s) return s;
+                          return {
+                            ...s,
+                            status: s.listings.length > 0 ? "complete" : "failed",
+                            runs: s.runs.map((r) =>
+                              r.status === "searching" || r.status === "queued"
+                                ? { ...r, status: "paused" as const, message: "Search stopped by user decision" }
+                                : r,
+                            ),
+                          };
+                        });
                       }}
                       aria-label="Side-by-side comparison"
                     >
