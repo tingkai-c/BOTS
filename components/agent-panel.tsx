@@ -1,5 +1,5 @@
 "use client";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useState, useRef, useCallback, useEffect } from "react";
 import {
   ArrowUpRight,
   Circle,
@@ -12,7 +12,7 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
-import type { Marketplace, SearchState, Listing, Run } from "@/lib/schemas";
+import type { Marketplace, SearchState, Listing, Run, AgentEvent } from "@/lib/schemas";
 import { Modal } from "./ui/dialog";
 import { PlatformLogo } from "./platform-logos";
 
@@ -63,6 +63,69 @@ export function BrowserView({
   );
 }
 
+export function KeepGoingStopButton({
+  decisionPaused,
+  resumedSearching,
+  isSearching,
+  onKeepGoing,
+  onStopSearch,
+  className = "",
+}: {
+  decisionPaused?: boolean;
+  resumedSearching?: boolean;
+  isSearching?: boolean;
+  onKeepGoing?: () => void;
+  onStopSearch?: () => void;
+  className?: string;
+}) {
+  const activeSearching = Boolean(
+    isSearching || (resumedSearching && isSearching !== false),
+  );
+
+  if (activeSearching) {
+    return (
+      <button
+        type="button"
+        className={`keep-going-btn searching-stop-btn ${className}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStopSearch?.();
+        }}
+        aria-label="Stop searching"
+        title="Click to stop remaining agents"
+      >
+        <span className="searching-content">
+          <i className="working-dot" />
+          Searching…
+        </span>
+        <span className="stop-content">
+          <Square size={8} fill="currentColor" />
+          Stop
+        </span>
+      </button>
+    );
+  }
+
+  if (decisionPaused) {
+    return (
+      <button
+        type="button"
+        className={`keep-going-btn ${className}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onKeepGoing?.();
+        }}
+        aria-label="Keep going"
+      >
+        <Play size={10} fill="currentColor" />
+        Keep going
+      </button>
+    );
+  }
+
+  return null;
+}
+
 function MarketBrowserCard({
   market,
   state,
@@ -71,6 +134,8 @@ function MarketBrowserCard({
   browsing,
   compact = false,
   isExpandedModal = false,
+  onPlay,
+  onPause,
 }: {
   market: Marketplace;
   state: SearchState | null;
@@ -79,6 +144,8 @@ function MarketBrowserCard({
   browsing?: boolean;
   compact?: boolean;
   isExpandedModal?: boolean;
+  onPlay?: (market: Marketplace) => void;
+  onPause?: (market: Marketplace) => void;
 }) {
   const config = MARKET_CONFIG[market];
   const marketAddress = config.url;
@@ -101,6 +168,36 @@ function MarketBrowserCard({
             {state?.demo ? "SIM" : "LIVE"}
           </span>
         </div>
+        {onPlay && onPause && (
+          <div className="agent-window-controls toolbar-controls">
+            <button
+              type="button"
+              className={`agent-control-btn play ${isSearching ? "disabled" : "active-play"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlay(market);
+              }}
+              disabled={isSearching}
+              title={`Start / Continue ${config.label} search`}
+              aria-label={`Start or continue ${config.label} search`}
+            >
+              <Play size={compact ? 7 : 8} fill="currentColor" />
+            </button>
+            <button
+              type="button"
+              className={`agent-control-btn pause ${!isSearching ? "disabled" : "active-pause"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPause(market);
+              }}
+              disabled={!isSearching}
+              title={`Pause / Stop ${config.label} search`}
+              aria-label={`Pause or stop ${config.label} search`}
+            >
+              <Pause size={compact ? 7 : 8} fill="currentColor" />
+            </button>
+          </div>
+        )}
       </div>
       {run?.debugUrl ? (
         <BrowserView url={run.debugUrl} />
@@ -121,6 +218,8 @@ function MarketBrowserCard({
                 <span className="market-run-badge complete">
                   {listings.length > 0 ? `${listings.length} items` : "0 items"}
                 </span>
+              ) : run?.status === "paused" ? (
+                <span className="market-run-badge paused">Paused</span>
               ) : run?.status === "login_required" ? (
                 <span className="market-run-badge paused">Auth</span>
               ) : (
@@ -220,6 +319,133 @@ function MarketBrowserCard({
   );
 }
 
+interface ActivityLogViewProps {
+  events: AgentEvent[];
+  compact?: boolean;
+  isBrowsing?: boolean;
+  placeholderCount?: number;
+}
+
+export function ActivityLogView({
+  events,
+  compact = false,
+  isBrowsing = false,
+  placeholderCount = 3,
+}: ActivityLogViewProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const isNearBottomRef = useRef(true);
+
+  const checkScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    setCanScrollUp(el.scrollTop > 2);
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setCanScrollDown(distanceFromBottom > 2);
+    isNearBottomRef.current = distanceFromBottom < 20;
+  }, []);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    if (isNearBottomRef.current || events.length <= 6) {
+      el.scrollTop = el.scrollHeight;
+    }
+    checkScroll();
+  }, [events.length, checkScroll]);
+
+  const showTopShadow = events.length >= 6 && canScrollUp;
+  const showBottomShadow = events.length >= 6 && canScrollDown;
+
+  if (events.length === 0) {
+    return (
+      <div className={`activity-list ${compact ? "compact " : ""}activity-idle`}>
+        {Array.from({ length: placeholderCount }).map((_, idx) => (
+          <div key={idx} className="activity-item placeholder">
+            <span className="activity-bullet">
+              <Circle size={compact ? 6 : 8} />
+            </span>
+            <span
+              className={`dashed-placeholder ${
+                idx === 0 ? "short" : idx === 1 ? "medium" : "long"
+              }`}
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={`activity-log-container ${showTopShadow ? "has-top-shadow" : ""} ${showBottomShadow ? "has-bottom-shadow" : ""}`}
+    >
+      <div
+        className={`activity-log-top-shadow ${showTopShadow ? "visible" : ""}`}
+        aria-hidden="true"
+      />
+      <div
+        className={`activity-log-bottom-shadow ${showBottomShadow ? "visible" : ""}`}
+        aria-hidden="true"
+      />
+      <div
+        ref={listRef}
+        onScroll={checkScroll}
+        className={`activity-list scrollable ${compact ? "compact" : ""}`}
+        aria-live="polite"
+      >
+        {events.map((e, idx) => {
+          const isLatest = idx === events.length - 1 && isBrowsing;
+          if (compact) {
+            return (
+              <div
+                key={e.id}
+                className={`activity-item compact ${e.kind === "error" ? "error" : ""}`}
+              >
+                <span className={`activity-bullet ${isLatest ? "current" : ""}`}>
+                  <Circle size={6} fill="currentColor" />
+                </span>
+                <div className="activity-compact-body">
+                  <p className="activity-text" title={e.message}>
+                    {e.message}
+                  </p>
+                  <time className="activity-time">
+                    {new Date(e.time).toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })}
+                  </time>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              key={e.id}
+              className={`activity-item ${e.kind === "error" ? "error" : ""}`}
+            >
+              <span className={`activity-bullet ${isLatest ? "current" : ""}`}>
+                <Circle size={8} fill="currentColor" />
+              </span>
+              <p className="activity-text">{e.message}</p>
+              <time className="activity-time">
+                {new Date(e.time).toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: false,
+                })}
+              </time>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function AgentPanel({
   state,
   activeMarket,
@@ -229,7 +455,11 @@ export function AgentPanel({
   isCollapsed,
   style,
   decisionPaused,
+  resumedSearching,
   onKeepGoing,
+  onStopSearch,
+  onPlayAgent,
+  onPauseAgent,
 }: {
   state: SearchState | null;
   activeMarket: Marketplace | "all";
@@ -239,7 +469,11 @@ export function AgentPanel({
   isCollapsed?: boolean;
   style?: CSSProperties;
   decisionPaused?: boolean;
+  resumedSearching?: boolean;
   onKeepGoing?: () => void;
+  onStopSearch?: () => void;
+  onPlayAgent?: (market: Marketplace) => void;
+  onPauseAgent?: (market: Marketplace) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -258,8 +492,7 @@ export function AgentPanel({
     activeMarket === "all"
       ? []
       : state?.events
-          .filter((e) => !e.marketplace || e.marketplace === activeMarket)
-          .slice(-5) || [];
+          .filter((e) => !e.marketplace || e.marketplace === activeMarket) || [];
 
   const mainStatus =
     activeMarket === "all"
@@ -289,19 +522,15 @@ export function AgentPanel({
       <div className="agent-panel-inner">
         <div className="agent-header">
           <div className="agent-header-left">
-            {decisionPaused ? (
-              <button
-                type="button"
-                className="keep-going-btn agent-keep-going-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onKeepGoing?.();
-                }}
-                aria-label="Keep going"
-              >
-                <Play size={10} fill="currentColor" />
-                Keep going
-              </button>
+            {decisionPaused || resumedSearching || isAnySearching ? (
+              <KeepGoingStopButton
+                decisionPaused={decisionPaused}
+                resumedSearching={resumedSearching}
+                isSearching={isAnySearching}
+                onKeepGoing={onKeepGoing}
+                onStopSearch={onStopSearch}
+                className="agent-keep-going-btn"
+              />
             ) : (
               <span
                 className={`status-pill ${
@@ -399,6 +628,8 @@ export function AgentPanel({
                   listings={mListings}
                   browsing={mBrowsing}
                   compact={true}
+                  onPlay={onPlayAgent}
+                  onPause={onPauseAgent}
                 />
               );
             })}
@@ -411,6 +642,8 @@ export function AgentPanel({
             listings={singleListings}
             browsing={isSingleBrowsing}
             compact={false}
+            onPlay={onPlayAgent}
+            onPause={onPauseAgent}
           />
         )}
 
@@ -435,7 +668,6 @@ export function AgentPanel({
                 const config = MARKET_CONFIG[m];
                 const mListings =
                   state?.listings.filter((l) => l.marketplace === m) || [];
-                const recentEvents = mEvents.slice(-4);
                 return (
                   <div key={m} className="activity-column">
                     <div className="activity-column-header">
@@ -452,60 +684,19 @@ export function AgentPanel({
                           ? "Live"
                           : mRun?.status === "complete"
                             ? `${mListings.length} found`
-                            : mRun?.status === "login_required"
-                              ? "Auth"
-                              : "Ready"}
+                            : mRun?.status === "paused"
+                              ? "Paused"
+                              : mRun?.status === "login_required"
+                                ? "Auth"
+                                : "Ready"}
                       </span>
                     </div>
-                    {recentEvents.length ? (
-                      <div className="activity-list compact" aria-live="polite">
-                        {recentEvents.map((e, idx) => (
-                          <div
-                            key={e.id}
-                            className={`activity-item compact ${
-                              e.kind === "error" ? "error" : ""
-                            }`}
-                          >
-                            <span
-                              className={`activity-bullet ${
-                                idx === recentEvents.length - 1 && isMBrowsing
-                                  ? "current"
-                                  : ""
-                              }`}
-                            >
-                              <Circle size={6} fill="currentColor" />
-                            </span>
-                            <div className="activity-compact-body">
-                              <p className="activity-text" title={e.message}>
-                                {e.message}
-                              </p>
-                              <time className="activity-time">
-                                {new Date(e.time).toLocaleTimeString("en-US", {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  hour12: false,
-                                })}
-                              </time>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="activity-list compact activity-idle">
-                        <div className="activity-item placeholder">
-                          <span className="activity-bullet">
-                            <Circle size={6} />
-                          </span>
-                          <span className="dashed-placeholder short" />
-                        </div>
-                        <div className="activity-item placeholder">
-                          <span className="activity-bullet">
-                            <Circle size={6} />
-                          </span>
-                          <span className="dashed-placeholder medium" />
-                        </div>
-                      </div>
-                    )}
+                    <ActivityLogView
+                      events={mEvents}
+                      compact={true}
+                      isBrowsing={isMBrowsing}
+                      placeholderCount={2}
+                    />
                   </div>
                 );
               })}
@@ -514,57 +705,11 @@ export function AgentPanel({
         ) : (
           <div className="activity-log-section">
             <div className="activity-log-heading">ACTIVITY LOG</div>
-            {singleEvents.length ? (
-              <div className="activity-list" aria-live="polite">
-                {singleEvents.map((e, i) => (
-                  <div
-                    key={e.id}
-                    className={`activity-item ${
-                      e.kind === "error" ? "error" : ""
-                    }`}
-                  >
-                    <span
-                      className={`activity-bullet ${
-                        i === singleEvents.length - 1 && isSingleBrowsing
-                          ? "current"
-                          : ""
-                      }`}
-                    >
-                      <Circle size={8} fill="currentColor" />
-                    </span>
-                    <p className="activity-text">{e.message}</p>
-                    <time className="activity-time">
-                      {new Date(e.time).toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        hour12: false,
-                      })}
-                    </time>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="activity-list activity-idle">
-                <div className="activity-item placeholder">
-                  <span className="activity-bullet">
-                    <Circle size={8} />
-                  </span>
-                  <span className="dashed-placeholder short" />
-                </div>
-                <div className="activity-item placeholder">
-                  <span className="activity-bullet">
-                    <Circle size={8} />
-                  </span>
-                  <span className="dashed-placeholder medium" />
-                </div>
-                <div className="activity-item placeholder">
-                  <span className="activity-bullet">
-                    <Circle size={8} />
-                  </span>
-                  <span className="dashed-placeholder long" />
-                </div>
-              </div>
-            )}
+            <ActivityLogView
+              events={singleEvents}
+              isBrowsing={isSingleBrowsing}
+              placeholderCount={3}
+            />
           </div>
         )}
       </div>
@@ -575,6 +720,16 @@ export function AgentPanel({
         onOpenChange={setExpanded}
         title="Agent browser preview"
         className="agent-preview-modal"
+        headerActions={
+          <KeepGoingStopButton
+            decisionPaused={decisionPaused}
+            resumedSearching={resumedSearching}
+            isSearching={isAnySearching}
+            onKeepGoing={onKeepGoing}
+            onStopSearch={onStopSearch}
+            className="popup-keep-going-btn"
+          />
+        }
         description={
           activeMarket === "all"
             ? "Concurrent marketplace browsing sessions across Facebook, eBay, and Kijiji"
@@ -639,6 +794,8 @@ export function AgentPanel({
                       browsing={mBrowsing}
                       compact={false}
                       isExpandedModal={true}
+                      onPlay={onPlayAgent}
+                      onPause={onPauseAgent}
                     />
                   );
                 })}
@@ -657,7 +814,6 @@ export function AgentPanel({
                     const config = MARKET_CONFIG[m];
                     const mListings =
                       state?.listings.filter((l) => l.marketplace === m) || [];
-                    const recentEvents = mEvents.slice(-5);
                     return (
                       <div key={m} className="activity-column">
                         <div className="activity-column-header">
@@ -674,70 +830,19 @@ export function AgentPanel({
                               ? "Live"
                               : mRun?.status === "complete"
                                 ? `${mListings.length} found`
-                                : mRun?.status === "login_required"
-                                  ? "Auth"
-                                  : "Ready"}
+                                : mRun?.status === "paused"
+                                  ? "Paused"
+                                  : mRun?.status === "login_required"
+                                    ? "Auth"
+                                    : "Ready"}
                           </span>
                         </div>
-                        {recentEvents.length ? (
-                          <div
-                            className="activity-list compact"
-                            aria-live="polite"
-                          >
-                            {recentEvents.map((e, idx) => (
-                              <div
-                                key={e.id}
-                                className={`activity-item compact ${
-                                  e.kind === "error" ? "error" : ""
-                                }`}
-                              >
-                                <span
-                                  className={`activity-bullet ${
-                                    idx === recentEvents.length - 1 &&
-                                    isMBrowsing
-                                      ? "current"
-                                      : ""
-                                  }`}
-                                >
-                                  <Circle size={6} fill="currentColor" />
-                                </span>
-                                <div className="activity-compact-body">
-                                  <p
-                                    className="activity-text"
-                                    title={e.message}
-                                  >
-                                    {e.message}
-                                  </p>
-                                  <time className="activity-time">
-                                    {new Date(e.time).toLocaleTimeString(
-                                      "en-US",
-                                      {
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                        hour12: false,
-                                      },
-                                    )}
-                                  </time>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="activity-list compact activity-idle">
-                            <div className="activity-item placeholder">
-                              <span className="activity-bullet">
-                                <Circle size={6} />
-                              </span>
-                              <span className="dashed-placeholder short" />
-                            </div>
-                            <div className="activity-item placeholder">
-                              <span className="activity-bullet">
-                                <Circle size={6} />
-                              </span>
-                              <span className="dashed-placeholder medium" />
-                            </div>
-                          </div>
-                        )}
+                        <ActivityLogView
+                          events={mEvents}
+                          compact={true}
+                          isBrowsing={isMBrowsing}
+                          placeholderCount={2}
+                        />
                       </div>
                     );
                   })}
@@ -753,6 +858,8 @@ export function AgentPanel({
               browsing={isSingleBrowsing}
               compact={false}
               isExpandedModal={true}
+              onPlay={onPlayAgent}
+              onPause={onPauseAgent}
             />
           )}
         </div>

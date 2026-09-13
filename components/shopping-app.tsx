@@ -30,7 +30,6 @@ import {
   LogIn,
   LogOut,
   MapPin,
-  Play,
   Plus,
   RefreshCw,
   Scale,
@@ -55,7 +54,7 @@ import {
   RequestError,
 } from "@/lib/client-stream";
 import { photo } from "@/lib/demo/fixtures";
-import { AgentPanel, BrowserView } from "./agent-panel";
+import { AgentPanel, BrowserView, KeepGoingStopButton } from "./agent-panel";
 import { ListingCard, MarketplaceBadge, DealScore, money } from "./listings";
 import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver, startNegotiationFor } from './workspace-negotiations';
 import { DealReviewModal } from './deal-review';
@@ -179,6 +178,11 @@ export function ShoppingApp({
   const [selectedSnapshot, setSelected] = useState<RankedListing | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState('listings');
   const [negotiatedIds,setNegotiatedIds]=useState<string[]>([]);
+  const [reviewOpen,setReviewOpen]=useState(false);
+  const [reviewShownFor,setReviewShownFor]=useState<string|null>(null);
+  const [reviewDecisions,setReviewDecisions]=useState<Record<string,'liked'|'rejected'>>({});
+  const [reviewBusyId,setReviewBusyId]=useState<string|null>(null);
+  const [reviewErrors,setReviewErrors]=useState<Record<string,string>>({});
   const [currency, setCurrency] = useState('CAD');
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [negotiate, setNegotiate] = useState<RankedListing | null>(null);
@@ -213,6 +217,10 @@ export function ShoppingApp({
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [decisionListings, setDecisionListings] = useState<RankedListing[]>([]);
   const [decisionPaused, setDecisionPaused] = useState(false);
+  const [resumedSearching, setResumedSearching] = useState(false);
+  const [pausedMarkets, setPausedMarkets] = useState<Set<Marketplace>>(new Set());
+  const pausedMarketsRef = useRef<Set<Marketplace>>(new Set());
+  pausedMarketsRef.current = pausedMarkets;
   const pauseRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
   const roundStartCount = useRef(0);
   const lastResultAt = useRef(0);
@@ -229,6 +237,7 @@ export function ShoppingApp({
   const input = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
+  const activeAgentSearches = useRef<Map<Marketplace, AbortController>>(new Map());
 
   const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
     // Only trigger on the divider bar itself, not the toggle button
@@ -317,9 +326,12 @@ export function ShoppingApp({
       }
     };
     window.addEventListener("keydown", key);
+    const agentSearches = activeAgentSearches.current;
     return () => {
       window.removeEventListener("keydown", key);
       abort.current?.abort();
+      agentSearches.forEach((ctrl) => ctrl.abort());
+      agentSearches.clear();
     };
   }, []);
 
@@ -334,14 +346,38 @@ export function ShoppingApp({
     // 5-result trigger
     const newThisRound = current - roundStartCount.current;
     if (newThisRound >= 5) {
-      if (!pauseRef.current) {
-        let res: () => void = () => {};
-        const p = new Promise<void>((r) => { res = r; });
-        pauseRef.current = { promise: p, resolve: res };
+      abort.current?.abort();
+      activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+      activeAgentSearches.current.clear();
+      if (pauseRef.current) {
+        pauseRef.current.resolve();
+        pauseRef.current = null;
       }
+      setBusy(false);
       setDecisionPaused(true);
       setDecisionListings(ranked.slice(0, 5));
       setDecisionOpen(true);
+      setState((s) => {
+        if (!s) return s;
+        return {
+          ...s,
+          status: s.listings.length > 0 ? "complete" : "failed",
+          runs: s.runs.map((r) =>
+            r.status === "searching" || r.status === "queued"
+              ? { ...r, status: "paused" as const, message: "Search stopped at decision gate" }
+              : r,
+          ),
+          events: [
+            ...s.events,
+            {
+              id: crypto.randomUUID(),
+              time: Date.now(),
+              kind: "action",
+              message: "Search stopped at decision gate",
+            },
+          ],
+        };
+      });
       return;
     }
     // 10-second idle trigger — only while an active search is running
@@ -351,14 +387,38 @@ export function ShoppingApp({
       if (Date.now() - lastResultAt.current >= 10_000 && !decisionOpen) {
         const snap = rankListings(state?.listings || []);
         if (snap.length > 0) {
-          if (!pauseRef.current) {
-            let res: () => void = () => {};
-            const p = new Promise<void>((r) => { res = r; });
-            pauseRef.current = { promise: p, resolve: res };
+          abort.current?.abort();
+          activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+          activeAgentSearches.current.clear();
+          if (pauseRef.current) {
+            pauseRef.current.resolve();
+            pauseRef.current = null;
           }
+          setBusy(false);
           setDecisionPaused(true);
           setDecisionListings(snap.slice(0, 5));
           setDecisionOpen(true);
+          setState((s) => {
+            if (!s) return s;
+            return {
+              ...s,
+              status: s.listings.length > 0 ? "complete" : "failed",
+              runs: s.runs.map((r) =>
+                r.status === "searching" || r.status === "queued"
+                  ? { ...r, status: "paused" as const, message: "Search stopped at decision gate" }
+                  : r,
+              ),
+              events: [
+                ...s.events,
+                {
+                  id: crypto.randomUUID(),
+                  time: Date.now(),
+                  kind: "action",
+                  message: "Search stopped at decision gate",
+                },
+              ],
+            };
+          });
         }
       }
     }, 1_000);
@@ -383,11 +443,40 @@ export function ShoppingApp({
     }
   }, []);
 
-  const applyEvent = async (event: StreamEvent) => {
+  const applyEvent = async (event: StreamEvent, originMarket?: Marketplace) => {
     if (pauseRef.current) {
       await pauseRef.current.promise;
     }
+    if (event.type === "listing" && pausedMarketsRef.current.has(event.listing.marketplace)) {
+      return;
+    }
+    if (event.type === "event" && event.event.marketplace && pausedMarketsRef.current.has(event.event.marketplace)) {
+      return;
+    }
+    if (event.type === "run" && pausedMarketsRef.current.has(event.run.marketplace)) {
+      return;
+    }
     if (event.type === "state") {
+      if (originMarket) {
+        setState((prev) => {
+          if (!prev) return event.state;
+          const mergedRuns = [...prev.runs];
+          for (const r of event.state.runs) {
+            const idx = mergedRuns.findIndex((x) => x.marketplace === r.marketplace);
+            if (idx >= 0) mergedRuns[idx] = r;
+            else mergedRuns.push(r);
+          }
+          return {
+            ...prev,
+            runs: mergedRuns,
+            listings:
+              event.state.listings.length > 0
+                ? event.state.listings.reduce((acc, l) => deduplicate(acc, l), prev.listings)
+                : prev.listings,
+          };
+        });
+        return;
+      }
       setState(event.state);
       restoredId.current = event.state.id;
       if (event.state.filters) {
@@ -425,6 +514,12 @@ export function ShoppingApp({
             ),
           };
         case "status":
+          if (originMarket) {
+            const otherSearching = s.runs.some(
+              (r) => r.marketplace !== originMarket && r.status === "searching",
+            );
+            return otherSearching ? s : { ...s, status: event.status };
+          }
           return { ...s, status: event.status };
         case "identification":
           return { ...s, identification: event.identification };
@@ -436,16 +531,228 @@ export function ShoppingApp({
     });
   };
 
+  const handlePauseAgent = useCallback((m: Marketplace) => {
+    const ctrl = activeAgentSearches.current.get(m);
+    if (ctrl) {
+      ctrl.abort();
+      activeAgentSearches.current.delete(m);
+    }
+    setPausedMarkets((prev) => {
+      const next = new Set(prev);
+      next.add(m);
+      return next;
+    });
+    setState((s) => {
+      if (!s) return s;
+      return {
+        ...s,
+        runs: s.runs.map((r) =>
+          r.marketplace === m
+            ? { ...r, status: "paused" as const, message: "Search paused by user" }
+            : r,
+        ),
+        events: [
+          ...s.events,
+          {
+            id: crypto.randomUUID(),
+            time: Date.now(),
+            kind: "action",
+            marketplace: m,
+            message: `Paused ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook Marketplace"} search`,
+          },
+        ],
+      };
+    });
+  }, []);
+
+  const handlePlayAgent = useCallback(
+    async (m: Marketplace) => {
+      setPausedMarkets((prev) => {
+        const next = new Set(prev);
+        next.delete(m);
+        return next;
+      });
+
+      setState((s) => {
+        if (!s) {
+          return {
+            id: crypto.randomUUID(),
+            query: query.trim() || "Search",
+            queryKind: "text",
+            status: "searching",
+            demo: false,
+            listings: [],
+            events: [
+              {
+                id: crypto.randomUUID(),
+                time: Date.now(),
+                kind: "action",
+                marketplace: m,
+                message: `Started ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook Marketplace"} search`,
+              },
+            ],
+            runs: [
+              {
+                marketplace: m,
+                status: "searching" as const,
+                message: `Searching ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook"}`,
+              },
+            ],
+          };
+        }
+        const existingRun = s.runs.find((r) => r.marketplace === m);
+        const updatedRuns = existingRun
+          ? s.runs.map((r) =>
+              r.marketplace === m
+                ? {
+                    ...r,
+                    status: "searching" as const,
+                    message: `Searching ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook"}`,
+                  }
+                : r,
+            )
+          : [
+              ...s.runs,
+              {
+                marketplace: m,
+                status: "searching" as const,
+                message: `Searching ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook"}`,
+              },
+            ];
+        return {
+          ...s,
+          runs: updatedRuns,
+          events: [
+            ...s.events,
+            {
+              id: crypto.randomUUID(),
+              time: Date.now(),
+              kind: "action",
+              marketplace: m,
+              message: `Resumed ${m === "ebay" ? "eBay" : m === "kijiji" ? "Kijiji" : "Facebook Marketplace"} search`,
+            },
+          ],
+        };
+      });
+
+      if (pauseRef.current) {
+        pauseRef.current.resolve();
+        pauseRef.current = null;
+      }
+
+      const searchQuery = query.trim() || state?.query || "";
+      if (!activeAgentSearches.current.has(m) && searchQuery) {
+        const singleAbort = new AbortController();
+        activeAgentSearches.current.set(m, singleAbort);
+        try {
+          await readStream<StreamEvent>(
+            await fetch("/api/search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                query: searchQuery,
+                image,
+                maxPrice: maxPrice ? Number(maxPrice) : undefined,
+                condition,
+                marketplace: m,
+                location,
+                radius,
+                currency,
+              }),
+              signal: singleAbort.signal,
+            }),
+            (ev) => applyEvent(ev, m),
+          );
+        } catch (e) {
+          if (e instanceof Error && e.name !== "AbortError") {
+            console.error(`Search error for ${m}:`, e);
+          }
+        } finally {
+          activeAgentSearches.current.delete(m);
+          setState((s) => {
+            if (!s) return s;
+            return {
+              ...s,
+              runs: s.runs.map((r) =>
+                r.marketplace === m && r.status === "searching"
+                  ? { ...r, status: "complete" as const, message: "Search complete" }
+                  : r,
+              ),
+            };
+          });
+        }
+      }
+    },
+    [query, state?.query, image, maxPrice, condition, location, radius, currency],
+  );
+
+  const handleStopSearch = useCallback(() => {
+    abort.current?.abort();
+    activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+    activeAgentSearches.current.clear();
+    const activePause = pauseRef.current as { resolve: () => void } | null;
+    if (activePause) {
+      activePause.resolve();
+      pauseRef.current = null;
+    }
+    setBusy(false);
+    setDecisionPaused(true);
+    setResumedSearching(false);
+    setState((s) => {
+      if (!s) return s;
+      return {
+        ...s,
+        status: s.listings.length > 0 ? "complete" : "failed",
+        runs: s.runs.map((r) =>
+          r.status === "searching" || r.status === "queued"
+            ? { ...r, status: "paused" as const, message: "Search stopped by user" }
+            : r,
+        ),
+        events: [
+          ...s.events,
+          {
+            id: crypto.randomUUID(),
+            time: Date.now(),
+            kind: "action",
+            message: "Search stopped by user",
+          },
+        ],
+      };
+    });
+  }, []);
+
   const handleKeepGoing = useCallback(() => {
     if (pauseRef.current) {
       pauseRef.current.resolve();
       pauseRef.current = null;
     }
     setDecisionPaused(false);
+    setResumedSearching(true);
     roundStartCount.current = state?.listings?.length || 0;
     lastResultAt.current = Date.now();
     setDecisionOpen(false);
-  }, [state?.listings?.length]);
+    setPausedMarkets(new Set());
+    setState((s) => {
+      if (!s) return s;
+      return {
+        ...s,
+        runs: s.runs.map((r) =>
+          r.status === "paused"
+            ? { ...r, status: "searching" as const, message: `Searching ${r.marketplace}` }
+            : r,
+        ),
+      };
+    });
+    const paused =
+      state?.runs
+        .filter((r) => r.status === "paused")
+        .map((r) => r.marketplace) || [];
+    for (const m of paused) {
+      if (!activeAgentSearches.current.has(m)) {
+        handlePlayAgent(m);
+      }
+    }
+  }, [state?.listings?.length, state?.runs, handlePlayAgent]);
 
   async function search(text = query) {
     if (busy || (!text.trim() && !image)) return;
@@ -453,7 +760,12 @@ export function ShoppingApp({
       pauseRef.current.resolve();
       pauseRef.current = null;
     }
+    abort.current?.abort();
+    activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+    activeAgentSearches.current.clear();
     setDecisionPaused(false);
+    setResumedSearching(false);
+    setPausedMarkets(new Set());
     setQuery(text);
     if (text.trim()) {
       setRecentSearches((prev) => [text.trim(), ...prev.filter((q) => q !== text.trim())].slice(0, 8));
@@ -519,6 +831,7 @@ export function ShoppingApp({
         pauseRef.current = null;
       }
       setDecisionPaused(false);
+      setResumedSearching(false);
       setBusy(false);
     }
   }
@@ -948,7 +1261,7 @@ export function ShoppingApp({
                 aria-label="Maximum price"
                 type="number"
                 min="1"
-                placeholder="Any price"
+                placeholder="Max price: Any"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(e.target.value)}
               />
@@ -1084,14 +1397,29 @@ export function ShoppingApp({
                       type="button"
                       className="decide-btn"
                       onClick={() => {
-                        if (busy && !pauseRef.current) {
-                          let res: () => void = () => {};
-                          const p = new Promise<void>((r) => { res = r; });
-                          pauseRef.current = { promise: p, resolve: res };
-                          setDecisionPaused(true);
+                        abort.current?.abort();
+                        activeAgentSearches.current.forEach((ctrl) => ctrl.abort());
+                        activeAgentSearches.current.clear();
+                        if (pauseRef.current) {
+                          pauseRef.current.resolve();
+                          pauseRef.current = null;
                         }
+                        setBusy(false);
+                        setDecisionPaused(true);
                         setDecisionListings(ranked.slice(0, 5));
                         setDecisionOpen(true);
+                        setState((s) => {
+                          if (!s) return s;
+                          return {
+                            ...s,
+                            status: s.listings.length > 0 ? "complete" : "failed",
+                            runs: s.runs.map((r) =>
+                              r.status === "searching" || r.status === "queued"
+                                ? { ...r, status: "paused" as const, message: "Search stopped by user decision" }
+                                : r,
+                            ),
+                          };
+                        });
                       }}
                       aria-label="Side-by-side comparison"
                     >
@@ -1350,7 +1678,11 @@ export function ShoppingApp({
             isCollapsed={panelCollapsed}
             onExpand={() => setPanelCollapsed(false)}
             decisionPaused={decisionPaused}
+            resumedSearching={resumedSearching}
             onKeepGoing={handleKeepGoing}
+            onStopSearch={handleStopSearch}
+            onPlayAgent={handlePlayAgent}
+            onPauseAgent={handlePauseAgent}
             style={!panelCollapsed && agentPanelWidth ? { flex: `0 0 ${agentPanelWidth}px`, width: `${agentPanelWidth}px` } : undefined}
           />
         </div>
@@ -1708,7 +2040,10 @@ export function ShoppingApp({
         negotiatedIds={negotiatedIds}
         busy={busy}
         decisionPaused={decisionPaused}
+        resumedSearching={resumedSearching}
+        isSearching={state?.runs.some((r) => r.status === "searching") || false}
         onContinue={handleKeepGoing}
+        onStopSearch={handleStopSearch}
         onClose={() => setDecisionOpen(false)}
         onNegotiate={(l) => {
           setDecisionOpen(false);
@@ -1730,7 +2065,10 @@ function DecisionModal({
   negotiatedIds,
   busy,
   decisionPaused,
+  resumedSearching,
+  isSearching,
   onContinue,
+  onStopSearch,
   onClose,
   onNegotiate,
   onSelect,
@@ -1740,7 +2078,10 @@ function DecisionModal({
   negotiatedIds: string[];
   busy: boolean;
   decisionPaused: boolean;
+  resumedSearching?: boolean;
+  isSearching?: boolean;
   onContinue: () => void;
+  onStopSearch?: () => void;
   onClose: () => void;
   onNegotiate: (l: RankedListing) => void;
   onSelect: (l: RankedListing) => void;
@@ -1778,17 +2119,14 @@ function DecisionModal({
       description={`Top ${topListings.length} scored listing${topListings.length !== 1 ? 's' : ''} — compare side-by-side or inspect single cards.`}
       className="decision-modal"
       headerActions={
-        decisionPaused ? (
-          <button
-            type="button"
-            className="keep-going-btn popup-keep-going-btn"
-            onClick={onContinue}
-            aria-label="Keep going"
-          >
-            <Play size={11} fill="currentColor" />
-            Keep going
-          </button>
-        ) : null
+        <KeepGoingStopButton
+          decisionPaused={decisionPaused}
+          resumedSearching={resumedSearching}
+          isSearching={isSearching}
+          onKeepGoing={onContinue}
+          onStopSearch={onStopSearch}
+          className="popup-keep-going-btn"
+        />
       }
     >
       <div className="decision-toolbar">
