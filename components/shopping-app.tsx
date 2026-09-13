@@ -602,8 +602,9 @@ export function ShoppingApp({
                 </select>
               </label>
               <p>
-                Facebook uses your connected account’s location. Set your city
-                in its browser for accurate local results.
+                Used to find eBay listings near you. Facebook Marketplace
+                uses your connected account’s location instead — set your
+                city in its browser for accurate local results.
               </p>
               <Button size="sm" onClick={() => setFilters(false)}>
                 Done
