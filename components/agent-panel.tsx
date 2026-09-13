@@ -63,6 +63,69 @@ export function BrowserView({
   );
 }
 
+export function KeepGoingStopButton({
+  decisionPaused,
+  resumedSearching,
+  isSearching,
+  onKeepGoing,
+  onStopSearch,
+  className = "",
+}: {
+  decisionPaused?: boolean;
+  resumedSearching?: boolean;
+  isSearching?: boolean;
+  onKeepGoing?: () => void;
+  onStopSearch?: () => void;
+  className?: string;
+}) {
+  const activeSearching = Boolean(
+    isSearching || (resumedSearching && isSearching !== false),
+  );
+
+  if (activeSearching) {
+    return (
+      <button
+        type="button"
+        className={`keep-going-btn searching-stop-btn ${className}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onStopSearch?.();
+        }}
+        aria-label="Stop searching"
+        title="Click to stop remaining agents"
+      >
+        <span className="searching-content">
+          <i className="working-dot" />
+          Searching…
+        </span>
+        <span className="stop-content">
+          <Square size={8} fill="currentColor" />
+          Stop
+        </span>
+      </button>
+    );
+  }
+
+  if (decisionPaused) {
+    return (
+      <button
+        type="button"
+        className={`keep-going-btn ${className}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onKeepGoing?.();
+        }}
+        aria-label="Keep going"
+      >
+        <Play size={10} fill="currentColor" />
+        Keep going
+      </button>
+    );
+  }
+
+  return null;
+}
+
 function MarketBrowserCard({
   market,
   state,
@@ -71,6 +134,8 @@ function MarketBrowserCard({
   browsing,
   compact = false,
   isExpandedModal = false,
+  onPlay,
+  onPause,
 }: {
   market: Marketplace;
   state: SearchState | null;
@@ -79,6 +144,8 @@ function MarketBrowserCard({
   browsing?: boolean;
   compact?: boolean;
   isExpandedModal?: boolean;
+  onPlay?: (market: Marketplace) => void;
+  onPause?: (market: Marketplace) => void;
 }) {
   const config = MARKET_CONFIG[market];
   const marketAddress = config.url;
@@ -101,6 +168,36 @@ function MarketBrowserCard({
             {state?.demo ? "SIM" : "LIVE"}
           </span>
         </div>
+        {onPlay && onPause && (
+          <div className="agent-window-controls toolbar-controls">
+            <button
+              type="button"
+              className={`agent-control-btn play ${isSearching ? "disabled" : "active-play"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPlay(market);
+              }}
+              disabled={isSearching}
+              title={`Start / Continue ${config.label} search`}
+              aria-label={`Start or continue ${config.label} search`}
+            >
+              <Play size={compact ? 7 : 8} fill="currentColor" />
+            </button>
+            <button
+              type="button"
+              className={`agent-control-btn pause ${!isSearching ? "disabled" : "active-pause"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPause(market);
+              }}
+              disabled={!isSearching}
+              title={`Pause / Stop ${config.label} search`}
+              aria-label={`Pause or stop ${config.label} search`}
+            >
+              <Pause size={compact ? 7 : 8} fill="currentColor" />
+            </button>
+          </div>
+        )}
       </div>
       {run?.debugUrl ? (
         <BrowserView url={run.debugUrl} />
@@ -121,6 +218,8 @@ function MarketBrowserCard({
                 <span className="market-run-badge complete">
                   {listings.length > 0 ? `${listings.length} items` : "0 items"}
                 </span>
+              ) : run?.status === "paused" ? (
+                <span className="market-run-badge paused">Paused</span>
               ) : run?.status === "login_required" ? (
                 <span className="market-run-badge paused">Auth</span>
               ) : (
@@ -229,7 +328,11 @@ export function AgentPanel({
   isCollapsed,
   style,
   decisionPaused,
+  resumedSearching,
   onKeepGoing,
+  onStopSearch,
+  onPlayAgent,
+  onPauseAgent,
 }: {
   state: SearchState | null;
   activeMarket: Marketplace | "all";
@@ -239,7 +342,11 @@ export function AgentPanel({
   isCollapsed?: boolean;
   style?: CSSProperties;
   decisionPaused?: boolean;
+  resumedSearching?: boolean;
   onKeepGoing?: () => void;
+  onStopSearch?: () => void;
+  onPlayAgent?: (market: Marketplace) => void;
+  onPauseAgent?: (market: Marketplace) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -289,19 +396,15 @@ export function AgentPanel({
       <div className="agent-panel-inner">
         <div className="agent-header">
           <div className="agent-header-left">
-            {decisionPaused ? (
-              <button
-                type="button"
-                className="keep-going-btn agent-keep-going-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onKeepGoing?.();
-                }}
-                aria-label="Keep going"
-              >
-                <Play size={10} fill="currentColor" />
-                Keep going
-              </button>
+            {decisionPaused || resumedSearching || isAnySearching ? (
+              <KeepGoingStopButton
+                decisionPaused={decisionPaused}
+                resumedSearching={resumedSearching}
+                isSearching={isAnySearching}
+                onKeepGoing={onKeepGoing}
+                onStopSearch={onStopSearch}
+                className="agent-keep-going-btn"
+              />
             ) : (
               <span
                 className={`status-pill ${
@@ -399,6 +502,8 @@ export function AgentPanel({
                   listings={mListings}
                   browsing={mBrowsing}
                   compact={true}
+                  onPlay={onPlayAgent}
+                  onPause={onPauseAgent}
                 />
               );
             })}
@@ -411,6 +516,8 @@ export function AgentPanel({
             listings={singleListings}
             browsing={isSingleBrowsing}
             compact={false}
+            onPlay={onPlayAgent}
+            onPause={onPauseAgent}
           />
         )}
 
@@ -452,9 +559,11 @@ export function AgentPanel({
                           ? "Live"
                           : mRun?.status === "complete"
                             ? `${mListings.length} found`
-                            : mRun?.status === "login_required"
-                              ? "Auth"
-                              : "Ready"}
+                            : mRun?.status === "paused"
+                              ? "Paused"
+                              : mRun?.status === "login_required"
+                                ? "Auth"
+                                : "Ready"}
                       </span>
                     </div>
                     {recentEvents.length ? (
@@ -575,6 +684,16 @@ export function AgentPanel({
         onOpenChange={setExpanded}
         title="Agent browser preview"
         className="agent-preview-modal"
+        headerActions={
+          <KeepGoingStopButton
+            decisionPaused={decisionPaused}
+            resumedSearching={resumedSearching}
+            isSearching={isAnySearching}
+            onKeepGoing={onKeepGoing}
+            onStopSearch={onStopSearch}
+            className="popup-keep-going-btn"
+          />
+        }
         description={
           activeMarket === "all"
             ? "Concurrent marketplace browsing sessions across Facebook, eBay, and Kijiji"
@@ -639,6 +758,8 @@ export function AgentPanel({
                       browsing={mBrowsing}
                       compact={false}
                       isExpandedModal={true}
+                      onPlay={onPlayAgent}
+                      onPause={onPauseAgent}
                     />
                   );
                 })}
@@ -674,9 +795,11 @@ export function AgentPanel({
                               ? "Live"
                               : mRun?.status === "complete"
                                 ? `${mListings.length} found`
-                                : mRun?.status === "login_required"
-                                  ? "Auth"
-                                  : "Ready"}
+                                : mRun?.status === "paused"
+                                  ? "Paused"
+                                  : mRun?.status === "login_required"
+                                    ? "Auth"
+                                    : "Ready"}
                           </span>
                         </div>
                         {recentEvents.length ? (
@@ -753,6 +876,8 @@ export function AgentPanel({
               browsing={isSingleBrowsing}
               compact={false}
               isExpandedModal={true}
+              onPlay={onPlayAgent}
+              onPause={onPauseAgent}
             />
           )}
         </div>

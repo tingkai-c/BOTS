@@ -3379,6 +3379,122 @@ body.is-resizing .agent-panel {
   font-size: 10.5px;
 }
 
+/* Green "Searching…" button that turns into red "Stop" on hover */
+.keep-going-btn.searching-stop-btn {
+  background: #e1f0da;
+  border-color: #a3d994;
+  color: #1e5616;
+  box-shadow: 0 1px 3px rgba(30, 86, 22, 0.18);
+}
+
+.keep-going-btn.searching-stop-btn .stop-content {
+  display: none;
+}
+
+.keep-going-btn.searching-stop-btn .searching-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.keep-going-btn.searching-stop-btn:hover {
+  background: #fee2e2;
+  border-color: #f87171;
+  color: #b91c1c;
+  box-shadow: 0 3px 8px rgba(185, 28, 28, 0.3);
+  transform: translateY(-1px);
+}
+
+.keep-going-btn.searching-stop-btn:hover .searching-content {
+  display: none;
+}
+
+.keep-going-btn.searching-stop-btn:hover .stop-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.keep-going-btn.searching-stop-btn:active {
+  background: #fecaca;
+  transform: translateY(0);
+}
+
+/* Agent window play & pause buttons */
+.mock-market-status-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-window-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid #dce4d9;
+  border-radius: 4px;
+  padding: 1px;
+}
+
+.agent-window-controls.toolbar-controls {
+  flex-shrink: 0;
+}
+
+.compact .agent-window-controls {
+  padding: 0.5px 1px;
+  gap: 1px;
+  border-radius: 3px;
+}
+
+.agent-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 3px;
+  border: none;
+  background: transparent;
+  color: #556b52;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.12s ease;
+}
+
+.compact .agent-control-btn {
+  width: 13px;
+  height: 13px;
+}
+
+.agent-control-btn:hover:not(:disabled) {
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.agent-control-btn.play:hover:not(:disabled) {
+  color: #1e5616;
+  background: #e1f0da;
+}
+
+.agent-control-btn.pause:hover:not(:disabled) {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.agent-control-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.agent-control-btn.active-play {
+  color: #1e5616;
+}
+
+.agent-control-btn.active-pause {
+  color: #b91c1c;
+}
+
 .modal-heading-actions {
   display: flex;
   align-items: center;
