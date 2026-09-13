@@ -27,7 +27,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   X,
-  Zap,
 } from "lucide-react";
 import type {
   Marketplace,
@@ -424,7 +423,6 @@ export function ShoppingApp({
           haggleface<span className="brand-dot">.</span>
         </a>
         <div className="nav-divider" />
-        <span className="nav-tagline">A better find.</span>
         <div className="nav-right">
           {demo && (
             <span className="demo-badge">
@@ -458,17 +456,12 @@ export function ShoppingApp({
       </header>
       <main>
         <section className="search-section">
-          <div className="search-eyebrow">
-            <span />
-            <span>LESS SEARCHING. BETTER FINDS.</span>
-          </div>
           <div className="search-heading">
             <h1>
               {state
                 ? "Let’s find your next great deal."
                 : "What are you looking for?"}
             </h1>
-            <p>One search. Multiple marketplaces. Your agent does the rest.</p>
           </div>
           <form
             className="search-form"
@@ -586,9 +579,6 @@ export function ShoppingApp({
               {location}
               <ChevronDown size={12} />
             </button>
-            <span className="search-filter-note">
-              <ShieldCheck size={12} /> You’re in control, always.
-            </span>
           </div>
           {filters && (
             <div className="location-popover">
@@ -674,11 +664,7 @@ export function ShoppingApp({
                     <option value="newest">Recently found</option>
                   </select>
                 </label>
-              ) : (
-                <span className="results-nav-note">
-                  Good things deserve a second life.
-                </span>
-              )}
+              ) : null}
             </div>
             {!state && !busy && !savedOnly ? (
               <div className="landing-results">
@@ -730,9 +716,6 @@ export function ShoppingApp({
                   <ArrowUpRight size={18} />
                 </button>
                 <div className="how-it-works">
-                  <div className="section-label">
-                    A SMARTER WAY TO SECONDHAND
-                  </div>
                   <div className="steps">
                     <div>
                       <span>01</span>
@@ -768,11 +751,7 @@ export function ShoppingApp({
                     <span>f</span>
                     <span>e</span>
                   </div>
-                  <p>
-                    Facebook Marketplace & eBay.
-                    <br />
-                    <strong>All the finds. None of the tab juggling.</strong>
-                  </p>
+                  <p>Facebook Marketplace & eBay.</p>
                   <span className="recycle-icon">↺</span>
                 </div>
               </div>
@@ -929,10 +908,6 @@ export function ShoppingApp({
       </main>
       <footer className="page-footer">
         <span className="footer-brand">haggleface.</span>
-        <span>Find more. Spend less. Buy secondhand.</span>
-        <span>
-          <Zap size={11} /> A little AI. A lot of possibility.
-        </span>
       </footer>
       <Modal
         open={!!selected}
