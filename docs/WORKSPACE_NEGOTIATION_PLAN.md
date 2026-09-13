@@ -501,7 +501,7 @@ If Vercel cannot reliably host the harness, present the measured failure and a m
 | **4. Discovery pipeline** | Implemented synchronous card reads, detail enrichment, leased batches/cursors, separate CAD/USD handling, source outcomes, and bounded native recovery. Real marketplace layouts remain unverified. |
 | **5. Negotiation engine** | Implemented signed/versioned limits, exact-message claims, first-deal reservation, uncertainty reconciliation, and manual takeover; controlled multi-round tests pass. |
 | **6. Monitoring** | Implemented minute dispatcher, account-batched bounded workers, five-minute target, Check now, pause/resume, expiry, and continuations. |
-| **7. Preview handoff** | Core checks and all three demo browser/API smoke tests pass; final test backend deployed. Preview worker wiring is the remaining handoff step. |
+| **7. Preview handoff** | Core checks, three local demo browser/API tests, and two signed-out deployment tests pass. Final test backend deployed; selected Vercel preview ready and test worker configured. |
 
 ### Workspace foundation checkpoint — 2026-09-13
 
@@ -520,6 +520,8 @@ This historical foundation checkpoint is superseded by the implementation status
 - Core checks: **17/17 unit tests**, TypeScript, ESLint, and Next.js production build passed. The earlier fixture-count assertion is fixed; Kijiji fixtures carry CAD.
 - **3/3 demo browser/API tests passed** against the local production build: search/filter/save/detail, controlled negotiation to price agreement, reload persistence, mobile layout/agent panel, image identification, connections, and invalid input/forged approval handling. Updated obsolete currency/negotiation assertions and fixed the missing favicon reference.
 - Final additive schema/functions deployed successfully to test **`sensible-newt-347`**; `work:due` returned no queued jobs. Production remains untouched.
+- Verified implementation commit **`d3e3ff6`** on preview **https://haggleface-m3z0mhj0t-tingkaic.vercel.app**. Both signed-out deployment browser/API tests passed; GitHub verification and Vercel deployment checks passed.
+- Test Convex `WORKSPACE_WORKER_URL` is pinned to **https://haggleface-m3z0mhj0t-tingkaic.vercel.app/api/workspace/worker**. The worker returned 401 without authorization. With the test secret, a deliberately invalid `{}` payload reached application validation and returned the expected structured 500 error; this verifies auth/runtime loading, not a successful browser job. `dispatcher:tick` ran successfully with no discovery work due. No Steel session or seller message was triggered by these checks.
 - Live messaging fails closed when conversation identity, complete history, availability, currency, or authorization cannot be verified. Conversation adapters require a stable listing association and message identity/direction metadata. They have not been validated against signed-in Facebook/eBay/Kijiji DOMs, and real seller messages were not sent.
 - Remaining validation: signed-in source extraction/profile reuse, real marketplace conversation selectors, forced-termination cleanup, and native bundle-size measurement. Verification is intentionally lightweight for the hackathon, as requested; controlled tests do not prove live seller delivery.
 
