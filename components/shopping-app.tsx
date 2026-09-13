@@ -29,6 +29,7 @@ import {
   LogIn,
   LogOut,
   MapPin,
+  Play,
   Plus,
   RefreshCw,
   Scale,
@@ -208,6 +209,8 @@ export function ShoppingApp({
   // Decision gate state
   const [decisionOpen, setDecisionOpen] = useState(false);
   const [decisionListings, setDecisionListings] = useState<RankedListing[]>([]);
+  const [decisionPaused, setDecisionPaused] = useState(false);
+  const pauseRef = useRef<{ promise: Promise<void>; resolve: () => void } | null>(null);
   const roundStartCount = useRef(0);
   const lastResultAt = useRef(0);
 
@@ -328,6 +331,12 @@ export function ShoppingApp({
     // 5-result trigger
     const newThisRound = current - roundStartCount.current;
     if (newThisRound >= 5) {
+      if (!pauseRef.current) {
+        let res: () => void = () => {};
+        const p = new Promise<void>((r) => { res = r; });
+        pauseRef.current = { promise: p, resolve: res };
+      }
+      setDecisionPaused(true);
       setDecisionListings(ranked.slice(0, 5));
       setDecisionOpen(true);
       return;
@@ -339,6 +348,12 @@ export function ShoppingApp({
       if (Date.now() - lastResultAt.current >= 10_000 && !decisionOpen) {
         const snap = rankListings(state?.listings || []);
         if (snap.length > 0) {
+          if (!pauseRef.current) {
+            let res: () => void = () => {};
+            const p = new Promise<void>((r) => { res = r; });
+            pauseRef.current = { promise: p, resolve: res };
+          }
+          setDecisionPaused(true);
           setDecisionListings(snap.slice(0, 5));
           setDecisionOpen(true);
         }
@@ -365,7 +380,10 @@ export function ShoppingApp({
     }
   }, []);
 
-  const applyEvent = (event: StreamEvent) => {
+  const applyEvent = async (event: StreamEvent) => {
+    if (pauseRef.current) {
+      await pauseRef.current.promise;
+    }
     if (event.type === "state") {
       setState(event.state);
       restoredId.current = event.state.id;
@@ -415,8 +433,24 @@ export function ShoppingApp({
     });
   };
 
+  const handleKeepGoing = useCallback(() => {
+    if (pauseRef.current) {
+      pauseRef.current.resolve();
+      pauseRef.current = null;
+    }
+    setDecisionPaused(false);
+    roundStartCount.current = state?.listings?.length || 0;
+    lastResultAt.current = Date.now();
+    setDecisionOpen(false);
+  }, [state?.listings?.length]);
+
   async function search(text = query) {
     if (busy || (!text.trim() && !image)) return;
+    if (pauseRef.current) {
+      pauseRef.current.resolve();
+      pauseRef.current = null;
+    }
+    setDecisionPaused(false);
     setQuery(text);
     if (text.trim()) {
       setRecentSearches((prev) => [text.trim(), ...prev.filter((q) => q !== text.trim())].slice(0, 8));
@@ -476,6 +510,12 @@ export function ShoppingApp({
         setError(e.message || "Could not complete search.");
       }
     } finally {
+      const activePause = pauseRef.current as { resolve: () => void } | null;
+      if (activePause) {
+        activePause.resolve();
+        pauseRef.current = null;
+      }
+      setDecisionPaused(false);
       setBusy(false);
     }
   }
@@ -1009,7 +1049,16 @@ export function ShoppingApp({
                     <button
                       type="button"
                       className="decide-btn"
-                      onClick={() => { setDecisionListings(ranked.slice(0, 5)); setDecisionOpen(true); }}
+                      onClick={() => {
+                        if (busy && !pauseRef.current) {
+                          let res: () => void = () => {};
+                          const p = new Promise<void>((r) => { res = r; });
+                          pauseRef.current = { promise: p, resolve: res };
+                          setDecisionPaused(true);
+                        }
+                        setDecisionListings(ranked.slice(0, 5));
+                        setDecisionOpen(true);
+                      }}
                       aria-label="Side-by-side comparison"
                     >
                       <Scale size={14} />
@@ -1132,9 +1181,21 @@ export function ShoppingApp({
                       ) : (
                         <CheckCheck size={14} />
                       )}{" "}
-                      {busy
-                        ? "Finding your shortlist"
-                        : "Your shortlist is ready"}
+                      {decisionPaused ? (
+                        <button
+                          type="button"
+                          className="keep-going-btn summary-keep-going-btn"
+                          onClick={handleKeepGoing}
+                          aria-label="Keep going"
+                        >
+                          <Play size={10} fill="currentColor" />
+                          Keep going
+                        </button>
+                      ) : busy ? (
+                        "Finding your shortlist"
+                      ) : (
+                        "Your shortlist is ready"
+                      )}
                     </span>
                     <span>
                       From{" "}
@@ -1262,6 +1323,8 @@ export function ShoppingApp({
             onConnect={() => setConnectionOpen(true)}
             isCollapsed={panelCollapsed}
             onExpand={() => setPanelCollapsed(false)}
+            decisionPaused={decisionPaused}
+            onKeepGoing={handleKeepGoing}
             style={!panelCollapsed && agentPanelWidth ? { flex: `0 0 ${agentPanelWidth}px`, width: `${agentPanelWidth}px` } : undefined}
           />
         </div>
@@ -1601,11 +1664,8 @@ export function ShoppingApp({
         listings={decisionListings}
         negotiatedIds={negotiatedIds}
         busy={busy}
-        onContinue={() => {
-          roundStartCount.current = ranked.length;
-          lastResultAt.current = Date.now();
-          setDecisionOpen(false);
-        }}
+        decisionPaused={decisionPaused}
+        onContinue={handleKeepGoing}
         onClose={() => setDecisionOpen(false)}
         onNegotiate={(l) => {
           setDecisionOpen(false);
@@ -1626,6 +1686,7 @@ function DecisionModal({
   listings,
   negotiatedIds,
   busy,
+  decisionPaused,
   onContinue,
   onClose,
   onNegotiate,
@@ -1635,6 +1696,7 @@ function DecisionModal({
   listings: RankedListing[];
   negotiatedIds: string[];
   busy: boolean;
+  decisionPaused: boolean;
   onContinue: () => void;
   onClose: () => void;
   onNegotiate: (l: RankedListing) => void;
@@ -1649,6 +1711,19 @@ function DecisionModal({
       title="Compare your shortlist"
       description={`Top ${topListings.length} scored listing${topListings.length !== 1 ? 's' : ''} — scroll horizontally to compare aspects across cards.`}
       className="decision-modal"
+      headerActions={
+        decisionPaused ? (
+          <button
+            type="button"
+            className="keep-going-btn popup-keep-going-btn"
+            onClick={onContinue}
+            aria-label="Keep going"
+          >
+            <Play size={11} fill="currentColor" />
+            Keep going
+          </button>
+        ) : null
+      }
     >
       <div className="decision-modal-body">
         <div className="decision-table-wrap">

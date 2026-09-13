@@ -228,6 +228,8 @@ export function AgentPanel({
   onExpand,
   isCollapsed,
   style,
+  decisionPaused,
+  onKeepGoing,
 }: {
   state: SearchState | null;
   activeMarket: Marketplace | "all";
@@ -236,6 +238,8 @@ export function AgentPanel({
   onExpand?: () => void;
   isCollapsed?: boolean;
   style?: CSSProperties;
+  decisionPaused?: boolean;
+  onKeepGoing?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -285,32 +289,47 @@ export function AgentPanel({
       <div className="agent-panel-inner">
         <div className="agent-header">
           <div className="agent-header-left">
-            <span
-              className={`status-pill ${
-                mainStatus === "Working" ? "active" : ""
-              }`}
-            >
-              {mainStatus === "Working" ? (
-                <Play
-                  size={8}
-                  fill="currentColor"
-                  className="status-square-icon"
-                />
-              ) : mainStatus === "Paused" ? (
-                <Pause
-                  size={8}
-                  fill="currentColor"
-                  className="status-square-icon"
-                />
-              ) : (
-                <Square
-                  size={7}
-                  fill="currentColor"
-                  className="status-square-icon"
-                />
-              )}
-              {mainStatus}
-            </span>
+            {decisionPaused ? (
+              <button
+                type="button"
+                className="keep-going-btn agent-keep-going-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onKeepGoing?.();
+                }}
+                aria-label="Keep going"
+              >
+                <Play size={10} fill="currentColor" />
+                Keep going
+              </button>
+            ) : (
+              <span
+                className={`status-pill ${
+                  mainStatus === "Working" ? "active" : ""
+                }`}
+              >
+                {mainStatus === "Working" ? (
+                  <Play
+                    size={8}
+                    fill="currentColor"
+                    className="status-square-icon"
+                  />
+                ) : mainStatus === "Paused" ? (
+                  <Pause
+                    size={8}
+                    fill="currentColor"
+                    className="status-square-icon"
+                  />
+                ) : (
+                  <Square
+                    size={7}
+                    fill="currentColor"
+                    className="status-square-icon"
+                  />
+                )}
+                {mainStatus}
+              </span>
+            )}
             <h2 className="agent-header-title">
               {activeMarket === "all"
                 ? "Concurrent agents preview"
