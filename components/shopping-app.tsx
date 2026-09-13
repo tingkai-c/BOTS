@@ -15,15 +15,16 @@ import {
   ArrowUpRight,
   Bookmark,
   Check,
-  CheckCheck,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Columns3,
   Command,
   Compass,
   History,
   ImagePlus,
   Info,
+  Layers,
   ListFilter,
   Loader2,
   LogIn,
@@ -664,6 +665,7 @@ export function ShoppingApp({
   if (sort === "newest")
     listings = [...listings].sort((a, b) => b.scrapedAt - a.scrapedAt);
   const best = listings[0];
+  const filteredOutCount = Math.max(0, ranked.length - listings.length);
 
   return (
     <div className="app-shell">
@@ -1176,25 +1178,17 @@ export function ShoppingApp({
                 {best && (
                   <div className="result-summary">
                     <span>
-                      {busy ? (
-                        <i className="working-dot" />
+                      {busy && !decisionPaused ? (
+                        <>
+                          <i className="working-dot" /> Finding your shortlist
+                        </>
                       ) : (
-                        <CheckCheck size={14} />
-                      )}{" "}
-                      {decisionPaused ? (
-                        <button
-                          type="button"
-                          className="keep-going-btn summary-keep-going-btn"
-                          onClick={handleKeepGoing}
-                          aria-label="Keep going"
-                        >
-                          <Play size={10} fill="currentColor" />
-                          Keep going
-                        </button>
-                      ) : busy ? (
-                        "Finding your shortlist"
-                      ) : (
-                        "Your shortlist is ready"
+                        <>
+                          <ListFilter size={13} />
+                          {filteredOutCount === 1
+                            ? "1 result filtered out"
+                            : `${filteredOutCount} results filtered out`}
+                        </>
                       )}
                     </span>
                     <span>
@@ -1703,13 +1697,36 @@ function DecisionModal({
   onSelect: (l: RankedListing) => void;
 }) {
   const topListings = listings.slice(0, 5);
+  const [viewMode, setViewMode] = useState<'compare' | 'single'>('compare');
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const count = topListings.length;
+  const prevCard = useCallback(() => {
+    if (count > 0) setCurrentIndex((i) => (i - 1 + count) % count);
+  }, [count]);
+
+  const nextCard = useCallback(() => {
+    if (count > 0) setCurrentIndex((i) => (i + 1) % count);
+  }, [count]);
+
+  useEffect(() => {
+    if (!open || viewMode !== 'single') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') prevCard();
+      else if (e.key === 'ArrowRight') nextCard();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, viewMode, prevCard, nextCard]);
+
+  const currentListing = topListings[currentIndex] || topListings[0];
 
   return (
     <Modal
       open={open}
       onOpenChange={(v) => { if (!v) onClose(); }}
       title="Compare your shortlist"
-      description={`Top ${topListings.length} scored listing${topListings.length !== 1 ? 's' : ''} — scroll horizontally to compare aspects across cards.`}
+      description={`Top ${topListings.length} scored listing${topListings.length !== 1 ? 's' : ''} — compare side-by-side or inspect single cards.`}
       className="decision-modal"
       headerActions={
         decisionPaused ? (
@@ -1725,167 +1742,358 @@ function DecisionModal({
         ) : null
       }
     >
-      <div className="decision-modal-body">
-        <div className="decision-table-wrap">
-          <table className="decision-table">
-            <thead>
-              <tr className="decision-row-item">
-                <th className="decision-aspect-th decision-aspect-th-corner">
-                  <span className="aspect-title">Item</span>
-                </th>
-                {topListings.map((l, i) => (
-                  <th key={l.id} className="decision-col-th">
-                    <div className="decision-col-card-head">
-                      <span className="decision-rank-badge">#{i + 1}</span>
-                      <button
-                        className="decision-col-image-btn"
-                        onClick={() => onSelect(l)}
-                        aria-label={`View ${l.title}`}
-                      >
-                        <img
-                          src={l.imageUrls[0] || '/product.svg'}
-                          alt={l.title}
-                          onError={(e) => { e.currentTarget.src = '/product.svg'; }}
-                        />
-                      </button>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="decision-row-aspect decision-row-title">
-                <th className="decision-aspect-th">
-                  <span className="aspect-title">Title</span>
-                </th>
-                {topListings.map((l) => (
-                  <td key={l.id} className="decision-col-td">
-                    <button
-                      className="decision-cell-title"
-                      onClick={() => onSelect(l)}
-                      title={l.title}
-                    >
-                      {l.title}
-                    </button>
-                  </td>
-                ))}
-              </tr>
-              <tr className="decision-row-aspect decision-row-price">
-                <th className="decision-aspect-th">
-                  <span className="aspect-title">Price</span>
-                </th>
-                {topListings.map((l) => (
-                  <td key={l.id} className="decision-col-td">
-                    <div className="decision-cell-price">
-                      <span className="decision-price-val">{money(l.price, l.currency)}</span>
-                      {l.shippingCost === 0 ? (
-                        <span className="decision-shipping-tag free">
-                          <Truck size={11} /> Free ship
-                        </span>
-                      ) : l.shippingCost ? (
-                        <span className="decision-shipping-tag">
-                          <Truck size={11} /> +{money(l.shippingCost, l.currency)}
-                        </span>
-                      ) : null}
-                    </div>
-                  </td>
-                ))}
-              </tr>
-              <tr className="decision-row-aspect decision-row-region">
-                <th className="decision-aspect-th">
-                  <span className="aspect-title">Region</span>
-                </th>
-                {topListings.map((l) => (
-                  <td key={l.id} className="decision-col-td">
-                    <div className="decision-cell-region" title={l.location || 'Not specified'}>
-                      <MapPin size={12} className="aspect-icon" />
-                      <span className="decision-region-text">{l.location || 'Not specified'}</span>
-                    </div>
-                  </td>
-                ))}
-              </tr>
-              <tr className="decision-row-aspect decision-row-score">
-                <th className="decision-aspect-th">
-                  <span className="aspect-title">Deal Score</span>
-                </th>
-                {topListings.map((l) => (
-                  <td key={l.id} className="decision-col-td">
-                    <span className={`decision-score-pill ${l.dealScore >= 85 ? 'excellent' : l.dealScore >= 75 ? 'good' : 'fair'}`}>
-                      {l.dealScore} · {l.dealScore >= 85 ? 'Excellent' : l.dealScore >= 75 ? 'Good deal' : 'Fair price'}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-              <tr className="decision-row-aspect decision-row-condition">
-                <th className="decision-aspect-th">
-                  <span className="aspect-title">Condition</span>
-                </th>
-                {topListings.map((l) => (
-                  <td key={l.id} className="decision-col-td">
-                    <span className="decision-condition-tag">
-                      {l.condition || 'Pre-owned'}
-                    </span>
-                  </td>
-                ))}
-              </tr>
-              <tr className="decision-row-aspect decision-row-platform">
-                <th className="decision-aspect-th">
-                  <span className="aspect-title">Platform</span>
-                </th>
-                {topListings.map((l) => (
-                  <td key={l.id} className="decision-col-td">
-                    <MarketplaceBadge marketplace={l.marketplace} />
-                  </td>
-                ))}
-              </tr>
-              <tr className="decision-row-aspect decision-row-seller">
-                <th className="decision-aspect-th">
-                  <span className="aspect-title">Seller</span>
-                </th>
-                {topListings.map((l) => (
-                  <td key={l.id} className="decision-col-td">
-                    {l.sellerRating != null ? (
-                      <span className="decision-seller-val">
-                        <Star size={11} fill="currentColor" />
-                        {l.sellerRating}
-                        {l.sellerReviewCount != null ? ` (${l.sellerReviewCount})` : ''}
-                      </span>
-                    ) : l.sellerName ? (
-                      <span className="decision-seller-name" title={l.sellerName}>
-                        {l.sellerName}
-                      </span>
-                    ) : (
-                      <span className="decision-seller-none">—</span>
-                    )}
-                  </td>
-                ))}
-              </tr>
-              <tr className="decision-row-aspect decision-row-action">
-                <th className="decision-aspect-th">
-                  <span className="aspect-title">Action</span>
-                </th>
-                {topListings.map((l) => (
-                  <td key={l.id} className="decision-col-td">
-                    <div className="decision-action-cell">
-                      <Button
-                        size="sm"
-                        onClick={() => onNegotiate(l)}
-                        disabled={l.availability === 'sold'}
-                        className="decision-negotiate-btn"
-                      >
-                        <Sparkles size={12} />
-                        {negotiatedIds.includes(l.id) ? 'In chat' : 'Negotiate'}
-                      </Button>
-                      <button className="decision-details-link" onClick={() => onSelect(l)}>
-                        Details <ArrowUpRight size={11} />
-                      </button>
-                    </div>
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
+      <div className="decision-toolbar">
+        <div className="decision-view-toggle">
+          <button
+            type="button"
+            className={`toggle-option ${viewMode === 'compare' ? 'active' : ''}`}
+            onClick={() => setViewMode('compare')}
+            aria-label="Compare all side-by-side"
+          >
+            <Columns3 size={13} />
+            <span>Compare all</span>
+          </button>
+          <button
+            type="button"
+            className={`toggle-option ${viewMode === 'single' ? 'active' : ''}`}
+            onClick={() => setViewMode('single')}
+            aria-label="Single card view"
+          >
+            <Layers size={13} />
+            <span>Single card</span>
+          </button>
         </div>
+      </div>
+
+      <div className="decision-modal-body">
+        {viewMode === 'compare' ? (
+          <div className="decision-table-wrap">
+            <table className="decision-table">
+              <thead>
+                <tr className="decision-row-item">
+                  <th className="decision-aspect-th decision-aspect-th-corner">
+                    <span className="aspect-title">Item</span>
+                  </th>
+                  {topListings.map((l, i) => (
+                    <th key={l.id} className="decision-col-th">
+                      <div className="decision-col-card-head">
+                        <span className="decision-rank-badge">#{i + 1}</span>
+                        <button
+                          className="decision-col-image-btn"
+                          onClick={() => onSelect(l)}
+                          aria-label={`View ${l.title}`}
+                        >
+                          <img
+                            src={l.imageUrls[0] || '/product.svg'}
+                            alt={l.title}
+                            onError={(e) => { e.currentTarget.src = '/product.svg'; }}
+                          />
+                        </button>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="decision-row-aspect decision-row-title">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Title</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <button
+                        className="decision-cell-title"
+                        onClick={() => onSelect(l)}
+                        title={l.title}
+                      >
+                        {l.title}
+                      </button>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-price">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Price</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-cell-price">
+                        <span className="decision-price-val">{money(l.price, l.currency)}</span>
+                        {l.shippingCost === 0 ? (
+                          <span className="decision-shipping-tag free">
+                            <Truck size={11} /> Free ship
+                          </span>
+                        ) : l.shippingCost ? (
+                          <span className="decision-shipping-tag">
+                            <Truck size={11} /> +{money(l.shippingCost, l.currency)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-region">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Region</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-cell-region" title={l.location || 'Not specified'}>
+                        <MapPin size={12} className="aspect-icon" />
+                        <span className="decision-region-text">{l.location || 'Not specified'}</span>
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-score">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Deal Score</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <span className={`decision-score-pill ${l.dealScore >= 85 ? 'excellent' : l.dealScore >= 75 ? 'good' : 'fair'}`}>
+                        {l.dealScore} · {l.dealScore >= 85 ? 'Excellent' : l.dealScore >= 75 ? 'Good deal' : 'Fair price'}
+                      </span>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-condition">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Condition</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <span className="decision-condition-tag">
+                        {l.condition || 'Pre-owned'}
+                      </span>
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-platform">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Platform</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <MarketplaceBadge marketplace={l.marketplace} />
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-seller">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Seller</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      {l.sellerRating != null ? (
+                        <span className="decision-seller-val">
+                          <Star size={11} fill="currentColor" />
+                          {l.sellerRating}
+                          {l.sellerReviewCount != null ? ` (${l.sellerReviewCount})` : ''}
+                        </span>
+                      ) : l.sellerName ? (
+                        <span className="decision-seller-name" title={l.sellerName}>
+                          {l.sellerName}
+                        </span>
+                      ) : (
+                        <span className="decision-seller-none">—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="decision-row-aspect decision-row-action">
+                  <th className="decision-aspect-th">
+                    <span className="aspect-title">Action</span>
+                  </th>
+                  {topListings.map((l) => (
+                    <td key={l.id} className="decision-col-td">
+                      <div className="decision-action-cell">
+                        <Button
+                          size="sm"
+                          onClick={() => onNegotiate(l)}
+                          disabled={l.availability === 'sold'}
+                          className="decision-negotiate-btn"
+                        >
+                          <Sparkles size={12} />
+                          {negotiatedIds.includes(l.id) ? 'In chat' : 'Negotiate'}
+                        </Button>
+                        <button className="decision-details-link" onClick={() => onSelect(l)}>
+                          Details <ArrowUpRight size={11} />
+                        </button>
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : currentListing ? (
+          <div className="decision-single-view">
+            <div className="single-card-carousel">
+              <button
+                type="button"
+                className="single-card-arrow prev"
+                onClick={prevCard}
+                aria-label="Previous card (circular)"
+                title="Previous listing"
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              <article className="decision-single-card">
+                <div className="single-card-header">
+                  <span className="single-card-rank">#{currentIndex + 1} of {topListings.length}</span>
+                  <span className={`decision-score-pill ${currentListing.dealScore >= 85 ? 'excellent' : currentListing.dealScore >= 75 ? 'good' : 'fair'}`}>
+                    {currentListing.dealScore} · {currentListing.dealScore >= 85 ? 'Excellent' : currentListing.dealScore >= 75 ? 'Good deal' : 'Fair price'}
+                  </span>
+                </div>
+
+                <button
+                  className="single-card-image-btn"
+                  onClick={() => onSelect(currentListing)}
+                  aria-label={`View ${currentListing.title}`}
+                >
+                  <img
+                    src={currentListing.imageUrls[0] || '/product.svg'}
+                    alt={currentListing.title}
+                    onError={(e) => { e.currentTarget.src = '/product.svg'; }}
+                  />
+                </button>
+
+                <div className="single-card-info">
+                  <button
+                    className="single-card-title"
+                    onClick={() => onSelect(currentListing)}
+                    title={currentListing.title}
+                  >
+                    {currentListing.title}
+                  </button>
+
+                  <div className="single-card-price-row">
+                    <span className="single-card-price">{money(currentListing.price, currentListing.currency)}</span>
+                    {currentListing.shippingCost === 0 ? (
+                      <span className="decision-shipping-tag free">
+                        <Truck size={11} /> Free shipping
+                      </span>
+                    ) : currentListing.shippingCost ? (
+                      <span className="decision-shipping-tag">
+                        <Truck size={11} /> +{money(currentListing.shippingCost, currentListing.currency)} shipping
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="single-card-aspects-grid">
+                    <div className="aspect-item">
+                      <span className="aspect-label">Region</span>
+                      <span className="aspect-val" title={currentListing.location || 'Not specified'}>
+                        <MapPin size={11} className="aspect-icon" />
+                        {currentListing.location || 'Not specified'}
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Condition</span>
+                      <span className="aspect-val">
+                        <span className="decision-condition-tag">
+                          {currentListing.condition || 'Pre-owned'}
+                        </span>
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Platform</span>
+                      <span className="aspect-val">
+                        <MarketplaceBadge marketplace={currentListing.marketplace} />
+                      </span>
+                    </div>
+
+                    <div className="aspect-item">
+                      <span className="aspect-label">Seller</span>
+                      <span className="aspect-val">
+                        {currentListing.sellerRating != null ? (
+                          <span className="decision-seller-val">
+                            <Star size={11} fill="currentColor" />
+                            {currentListing.sellerRating}
+                            {currentListing.sellerReviewCount != null ? ` (${currentListing.sellerReviewCount})` : ''}
+                          </span>
+                        ) : currentListing.sellerName ? (
+                          <span className="decision-seller-name" title={currentListing.sellerName}>
+                            {currentListing.sellerName}
+                          </span>
+                        ) : (
+                          <span className="decision-seller-none">—</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="single-card-actions">
+                  <Button
+                    size="sm"
+                    onClick={() => onNegotiate(currentListing)}
+                    disabled={currentListing.availability === 'sold'}
+                    className="decision-negotiate-btn single-negotiate-btn"
+                  >
+                    <Sparkles size={13} />
+                    {negotiatedIds.includes(currentListing.id) ? 'In chat' : 'Start negotiation'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onSelect(currentListing)}
+                    className="single-details-btn"
+                  >
+                    Details <ArrowUpRight size={12} />
+                  </Button>
+                </div>
+              </article>
+
+              <button
+                type="button"
+                className="single-card-arrow next"
+                onClick={nextCard}
+                aria-label="Next card (circular)"
+                title="Next listing"
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+
+            {/* Quick jump slider bar */}
+            {topListings.length > 1 && (
+              <div className="single-card-slider-bar">
+                <div className="slider-label-row">
+                  <span className="slider-hint-text">Slide to jump between top {topListings.length}:</span>
+                  <span className="slider-index-tag">#{currentIndex + 1}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={topListings.length - 1}
+                  step={1}
+                  value={currentIndex}
+                  onChange={(e) => setCurrentIndex(Number(e.target.value))}
+                  className="single-card-range-slider"
+                  aria-label="Slider to navigate between cards"
+                />
+                <div className="slider-numbers-row">
+                  {topListings.map((l, i) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      className={`slider-number-btn ${i === currentIndex ? 'active' : ''}`}
+                      onClick={() => setCurrentIndex(i)}
+                      aria-label={`Jump to card ${i + 1}`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
       <div className="decision-modal-footer">
         <Button onClick={onContinue} disabled={!busy} variant="outline">
