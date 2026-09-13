@@ -1645,63 +1645,169 @@ function DecisionModal({
       open={open}
       onOpenChange={(v) => { if (!v) onClose(); }}
       title="Compare your shortlist"
-      description={`${listings.length} listing${listings.length !== 1 ? 's' : ''} found — scroll to compare, then negotiate or keep searching.`}
+      description={`${listings.length} listing${listings.length !== 1 ? 's' : ''} found — scroll horizontally to compare aspects across cards.`}
       className="decision-modal"
     >
       <div className="decision-modal-body">
-        <div className="decision-track">
-          {listings.map((l, i) => (
-            <article key={l.id} className="decision-card">
-              <div className="decision-card-rank"># {i + 1}</div>
-              <button className="decision-card-image" onClick={() => onSelect(l)} aria-label={`View ${l.title}`}>
-                <img
-                  src={l.imageUrls[0] || '/product.svg'}
-                  alt={l.title}
-                  onError={(e) => { e.currentTarget.src = '/product.svg'; }}
-                />
-              </button>
-              <div className="decision-card-body">
-                <span className={`decision-score ${l.dealScore >= 85 ? 'excellent' : l.dealScore >= 75 ? 'good' : 'fair'}`}>
-                  {l.dealScore} · {l.dealScore >= 85 ? 'Excellent' : l.dealScore >= 75 ? 'Good deal' : 'Fair price'}
-                </span>
-                <button className="decision-card-title" onClick={() => onSelect(l)}>{l.title}</button>
-                <div className="decision-card-meta">
-                  <span className="decision-price">
-                    {money(l.price, l.currency)}
-                    {l.shippingCost === 0
-                      ? <><Truck size={11}/>&nbsp;Free shipping</>
-                      : l.shippingCost
-                      ? <><Truck size={11}/>&nbsp;+{money(l.shippingCost, l.currency)}</>
-                      : null}
-                  </span>
-                  {l.condition && <span className="decision-condition">{l.condition}</span>}
-                  {l.sellerRating != null && (
-                    <span className="decision-seller">
-                      <Star size={11} fill="currentColor"/>
-                      {l.sellerRating}
-                      {l.sellerReviewCount != null ? ` (${l.sellerReviewCount})` : ''}
+        <div className="decision-table-wrap">
+          <table className="decision-table">
+            <thead>
+              <tr className="decision-row-item">
+                <th className="decision-aspect-th decision-aspect-th-corner">
+                  <span className="aspect-title">Item</span>
+                </th>
+                {listings.map((l, i) => (
+                  <th key={l.id} className="decision-col-th">
+                    <div className="decision-col-card-head">
+                      <span className="decision-rank-badge">#{i + 1}</span>
+                      <button
+                        className="decision-col-image-btn"
+                        onClick={() => onSelect(l)}
+                        aria-label={`View ${l.title}`}
+                      >
+                        <img
+                          src={l.imageUrls[0] || '/product.svg'}
+                          alt={l.title}
+                          onError={(e) => { e.currentTarget.src = '/product.svg'; }}
+                        />
+                      </button>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="decision-row-aspect decision-row-title">
+                <th className="decision-aspect-th">
+                  <span className="aspect-title">Title</span>
+                </th>
+                {listings.map((l) => (
+                  <td key={l.id} className="decision-col-td">
+                    <button
+                      className="decision-cell-title"
+                      onClick={() => onSelect(l)}
+                      title={l.title}
+                    >
+                      {l.title}
+                    </button>
+                  </td>
+                ))}
+              </tr>
+              <tr className="decision-row-aspect decision-row-price">
+                <th className="decision-aspect-th">
+                  <span className="aspect-title">Price</span>
+                </th>
+                {listings.map((l) => (
+                  <td key={l.id} className="decision-col-td">
+                    <div className="decision-cell-price">
+                      <span className="decision-price-val">{money(l.price, l.currency)}</span>
+                      {l.shippingCost === 0 ? (
+                        <span className="decision-shipping-tag free">
+                          <Truck size={11} /> Free ship
+                        </span>
+                      ) : l.shippingCost ? (
+                        <span className="decision-shipping-tag">
+                          <Truck size={11} /> +{money(l.shippingCost, l.currency)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
+                ))}
+              </tr>
+              <tr className="decision-row-aspect decision-row-region">
+                <th className="decision-aspect-th">
+                  <span className="aspect-title">Region</span>
+                </th>
+                {listings.map((l) => (
+                  <td key={l.id} className="decision-col-td">
+                    <div className="decision-cell-region" title={l.location || 'Not specified'}>
+                      <MapPin size={12} className="aspect-icon" />
+                      <span className="decision-region-text">{l.location || 'Not specified'}</span>
+                    </div>
+                  </td>
+                ))}
+              </tr>
+              <tr className="decision-row-aspect decision-row-score">
+                <th className="decision-aspect-th">
+                  <span className="aspect-title">Deal Score</span>
+                </th>
+                {listings.map((l) => (
+                  <td key={l.id} className="decision-col-td">
+                    <span className={`decision-score-pill ${l.dealScore >= 85 ? 'excellent' : l.dealScore >= 75 ? 'good' : 'fair'}`}>
+                      {l.dealScore} · {l.dealScore >= 85 ? 'Excellent' : l.dealScore >= 75 ? 'Good deal' : 'Fair price'}
                     </span>
-                  )}
-                  {l.location && <span className="decision-location"><MapPin size={11}/>{l.location}</span>}
-                  <MarketplaceBadge marketplace={l.marketplace} />
-                </div>
-              </div>
-              <div className="decision-card-footer">
-                <Button
-                  size="sm"
-                  onClick={() => onNegotiate(l)}
-                  disabled={l.availability === 'sold'}
-                  className="decision-negotiate-btn"
-                >
-                  <Sparkles size={13} />
-                  {negotiatedIds.includes(l.id) ? 'View negotiation' : 'Negotiate'}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => onSelect(l)}>
-                  Details <ArrowUpRight size={12} />
-                </Button>
-              </div>
-            </article>
-          ))}
+                  </td>
+                ))}
+              </tr>
+              <tr className="decision-row-aspect decision-row-condition">
+                <th className="decision-aspect-th">
+                  <span className="aspect-title">Condition</span>
+                </th>
+                {listings.map((l) => (
+                  <td key={l.id} className="decision-col-td">
+                    <span className="decision-condition-tag">
+                      {l.condition || 'Pre-owned'}
+                    </span>
+                  </td>
+                ))}
+              </tr>
+              <tr className="decision-row-aspect decision-row-platform">
+                <th className="decision-aspect-th">
+                  <span className="aspect-title">Platform</span>
+                </th>
+                {listings.map((l) => (
+                  <td key={l.id} className="decision-col-td">
+                    <MarketplaceBadge marketplace={l.marketplace} />
+                  </td>
+                ))}
+              </tr>
+              <tr className="decision-row-aspect decision-row-seller">
+                <th className="decision-aspect-th">
+                  <span className="aspect-title">Seller</span>
+                </th>
+                {listings.map((l) => (
+                  <td key={l.id} className="decision-col-td">
+                    {l.sellerRating != null ? (
+                      <span className="decision-seller-val">
+                        <Star size={11} fill="currentColor" />
+                        {l.sellerRating}
+                        {l.sellerReviewCount != null ? ` (${l.sellerReviewCount})` : ''}
+                      </span>
+                    ) : l.sellerName ? (
+                      <span className="decision-seller-name" title={l.sellerName}>
+                        {l.sellerName}
+                      </span>
+                    ) : (
+                      <span className="decision-seller-none">—</span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+              <tr className="decision-row-aspect decision-row-action">
+                <th className="decision-aspect-th">
+                  <span className="aspect-title">Action</span>
+                </th>
+                {listings.map((l) => (
+                  <td key={l.id} className="decision-col-td">
+                    <div className="decision-action-cell">
+                      <Button
+                        size="sm"
+                        onClick={() => onNegotiate(l)}
+                        disabled={l.availability === 'sold'}
+                        className="decision-negotiate-btn"
+                      >
+                        <Sparkles size={12} />
+                        {negotiatedIds.includes(l.id) ? 'In chat' : 'Negotiate'}
+                      </Button>
+                      <button className="decision-details-link" onClick={() => onSelect(l)}>
+                        Details <ArrowUpRight size={11} />
+                      </button>
+                    </div>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
       <div className="decision-modal-footer">

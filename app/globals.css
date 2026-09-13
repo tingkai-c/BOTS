@@ -3286,7 +3286,7 @@ body.is-resizing .agent-panel {
   max-width: 95vw;
   height: 95dvh;
   max-height: 95dvh;
-  padding: 24px 24px 0;
+  padding: 22px 22px 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3294,179 +3294,320 @@ body.is-resizing .agent-panel {
 
 .modal-content.decision-modal .modal-heading {
   flex-shrink: 0;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .decision-modal-body {
   flex: 1;
   min-height: 0;
   overflow-x: auto;
-  overflow-y: hidden;
-  /* smooth horizontal scrolling on mobile */
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x mandatory;
-  padding-bottom: 6px; /* space for scrollbar */
+  background: #fdfefc;
+  border: 1.5px solid #dce4d6;
+  border-radius: 12px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.02);
 }
 
-/* Hide scrollbar visually but keep it functional */
+/* Custom scrollbars */
 .decision-modal-body::-webkit-scrollbar {
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 .decision-modal-body::-webkit-scrollbar-thumb {
-  background: #cdd8c7;
-  border-radius: 3px;
+  background: #c5d3c0;
+  border-radius: 4px;
 }
 
-.decision-track {
-  display: flex;
-  gap: 16px;
-  align-items: stretch;
-  padding: 4px 2px 8px;
-  height: 100%;
+.decision-table-wrap {
+  min-width: 100%;
+  display: inline-block;
+  vertical-align: top;
 }
 
-/* ── Individual decision card ── */
-.decision-card {
-  flex: 0 0 270px;
+.decision-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  table-layout: fixed;
+}
+
+/* ── Aspect column headers (sticky left) ── */
+.decision-aspect-th {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  width: 110px;
+  min-width: 110px;
+  max-width: 110px;
+  background: #f2f6ee;
+  border-right: 2px solid #d2ded0;
+  border-bottom: 1px solid #e1ebe0;
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: middle;
+  box-shadow: 2px 0 6px rgba(28, 48, 24, 0.04);
+}
+
+.decision-aspect-th.decision-aspect-th-corner {
+  top: 0;
+  z-index: 25;
+  background: #e8efe4;
+  vertical-align: bottom;
+  padding-bottom: 12px;
+}
+
+.aspect-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #40583b;
+}
+
+/* ── Top column headers (Photo & rank) ── */
+.decision-col-th {
+  width: 195px;
+  min-width: 195px;
+  max-width: 195px;
+  background: #fff;
+  border-right: 1px solid #e3eae0;
+  border-bottom: 2px solid #d2ded0;
+  padding: 10px 10px 8px;
+  vertical-align: top;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  box-shadow: 0 2px 5px rgba(20, 40, 20, 0.02);
+}
+
+.decision-col-card-head {
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border: 1.5px solid #dce4d6;
-  border-radius: 14px;
-  overflow: hidden;
   position: relative;
-  scroll-snap-align: start;
-  transition: border-color 0.18s, box-shadow 0.18s;
-}
-.decision-card:hover {
-  border-color: #a8c4a4;
-  box-shadow: 0 6px 24px rgba(32, 52, 28, 0.10);
 }
 
-.decision-card-rank {
+.decision-rank-badge {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 6px;
+  left: 6px;
   z-index: 2;
-  background: rgba(20, 36, 20, 0.70);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(22, 38, 22, 0.78);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 20px;
-  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 12px;
 }
 
-.decision-card-image {
+.decision-col-image-btn {
   display: block;
   width: 100%;
   aspect-ratio: 1 / 1;
+  border-radius: 8px;
   overflow: hidden;
-  flex-shrink: 0;
-  background: #f2f5f0;
+  background: #f1f4ee;
+  border: 1px solid #e2ece0;
   padding: 0;
-  border-radius: 0;
   cursor: pointer;
 }
-.decision-card-image img {
+.decision-col-image-btn img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
+  transition: transform 0.22s ease;
 }
-.decision-card-image:hover img { transform: scale(1.04); }
+.decision-col-image-btn:hover img {
+  transform: scale(1.05);
+}
 
-.decision-card-body {
-  flex: 1;
+/* ── Aspect rows & cells ── */
+.decision-col-td {
+  width: 195px;
+  min-width: 195px;
+  max-width: 195px;
+  background: #fff;
+  border-right: 1px solid #e6ece2;
+  border-bottom: 1px solid #edf2ea;
+  padding: 8px 10px;
+  vertical-align: middle;
+  font-size: 12px;
+  color: #1f2a1e;
+  box-sizing: border-box;
+}
+
+.decision-row-aspect:hover .decision-col-td {
+  background: #fafcfa;
+}
+
+/* Aspect: Title */
+.decision-cell-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #182417;
+  text-align: left;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+  background: none;
+  border: none;
+}
+.decision-cell-title:hover {
+  color: #284c34;
+  text-decoration: underline;
+}
+
+/* Aspect: Price */
+.decision-cell-price {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 14px 14px 8px;
-  overflow: hidden;
+  gap: 1px;
+}
+.decision-price-val {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #162316;
+}
+.decision-shipping-tag {
+  font-size: 10px;
+  color: #61735e;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.decision-shipping-tag.free {
+  color: #226922;
+  font-weight: 600;
 }
 
-.decision-score {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 20px;
-  align-self: flex-start;
+/* Aspect: Region */
+.decision-cell-region {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: #485c45;
 }
-.decision-score.excellent {
+.decision-cell-region .aspect-icon {
+  flex-shrink: 0;
+  color: #637760;
+}
+.decision-region-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Aspect: Deal Score */
+.decision-score-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+.decision-score-pill.excellent {
   background: #e3f4e0;
   color: #1d5c1a;
   border: 1px solid #b3ddb0;
 }
-.decision-score.good {
+.decision-score-pill.good {
   background: #eef3e9;
   color: #2f5233;
   border: 1px solid #c8d9c4;
 }
-.decision-score.fair {
+.decision-score-pill.fair {
   background: #faf4e8;
   color: #7a5c1e;
   border: 1px solid #e8d8b4;
 }
 
-.decision-card-title {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #1c261c;
-  text-align: left;
-  line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  cursor: pointer;
-  padding: 0;
+/* Aspect: Condition */
+.decision-condition-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: #41563f;
+  background: #f0f4ee;
+  border: 1px solid #dce4d8;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-weight: 500;
+  white-space: nowrap;
 }
-.decision-card-title:hover { color: #284c34; }
 
-.decision-card-meta {
+/* Aspect: Seller */
+.decision-seller-val {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: #586b55;
+  font-weight: 500;
+}
+.decision-seller-val svg {
+  color: #d99b1a;
+}
+.decision-seller-name {
+  display: block;
+  font-size: 11px;
+  color: #586b55;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.decision-seller-none {
+  color: #a4b39f;
+}
+
+/* Aspect: Action */
+.decision-action-cell {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  margin-top: auto;
+  align-items: stretch;
+  padding: 8px 10px;
 }
-
-.decision-price {
-  font-size: 17px;
-  font-weight: 700;
-  color: #1c261c;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.decision-condition,
-.decision-seller,
-.decision-location {
-  font-size: 11px;
-  color: #607558;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.decision-card-footer {
-  display: flex;
-  gap: 8px;
-  padding: 10px 14px 14px;
-  border-top: 1px solid #edf1ea;
-  flex-shrink: 0;
-}
-.decision-card-footer .button { flex: 1; justify-content: center; }
 
 .decision-negotiate-btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  padding: 5px 8px !important;
+  height: 30px !important;
   background: linear-gradient(135deg, #284c34 0%, #3e7049 100%) !important;
   color: #fff !important;
   border-color: #2b5237 !important;
+  border-radius: 7px !important;
 }
 .decision-negotiate-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, #1c3c27 0%, #2e5838 100%) !important;
+}
+
+.decision-details-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #556c52;
+  background: none;
+  border: none;
+  padding: 1px 0;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.decision-details-link:hover {
+  color: #284c34;
+  text-decoration: underline;
 }
 
 /* ── Modal footer (Continue / status) ── */
@@ -3475,7 +3616,7 @@ body.is-resizing .agent-panel {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 14px 0 18px;
+  padding: 12px 0 16px;
   border-top: 1px solid #e4ebe0;
   margin-top: 4px;
 }
@@ -3485,28 +3626,29 @@ body.is-resizing .agent-panel {
   color: #7a8c74;
 }
 
-/* Mobile: vertical scroll, full-width cards */
+/* Mobile: responsive aspect table */
 @media (max-width: 640px) {
   .modal-content.decision-modal {
-    width: 95vw;
-    height: 95dvh;
-    padding: 18px 16px 0;
+    width: 96vw;
+    height: 94dvh;
+    padding: 16px 14px 0;
   }
-  .decision-modal-body {
-    overflow-x: hidden;
-    overflow-y: auto;
-    scroll-snap-type: y mandatory;
+  .decision-aspect-th {
+    width: 85px;
+    min-width: 85px;
+    max-width: 85px;
+    padding: 6px 8px;
   }
-  .decision-track {
-    flex-direction: column;
-    height: auto;
-    gap: 12px;
+  .aspect-title {
+    font-size: 9.5px;
   }
-  .decision-card {
-    flex: 0 0 auto;
-    width: 100%;
+  .decision-col-th,
+  .decision-col-td {
+    width: 170px;
+    min-width: 170px;
+    max-width: 170px;
+    padding: 6px 8px;
   }
-  .decision-card-image { aspect-ratio: 16 / 9; }
   .decision-modal-footer {
     flex-direction: column;
     align-items: flex-start;
