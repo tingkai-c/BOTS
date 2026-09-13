@@ -52,7 +52,9 @@ import {
 import { photo } from "@/lib/demo/fixtures";
 import { AgentPanel, BrowserView } from "./agent-panel";
 import { ListingCard, MarketplaceBadge, DealScore, money } from "./listings";
-import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver } from './workspace-negotiations';
+import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver, startNegotiationFor } from './workspace-negotiations';
+import { DealReviewModal } from './deal-review';
+import { defaultNegotiationSettings } from '@/lib/negotiation/defaults';
 import { PlatformLogo } from "./platform-logos";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
@@ -172,6 +174,11 @@ export function ShoppingApp({
   const [selectedSnapshot, setSelected] = useState<RankedListing | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState('listings');
   const [negotiatedIds,setNegotiatedIds]=useState<string[]>([]);
+  const [reviewOpen,setReviewOpen]=useState(false);
+  const [reviewShownFor,setReviewShownFor]=useState<string|null>(null);
+  const [reviewDecisions,setReviewDecisions]=useState<Record<string,'liked'|'rejected'>>({});
+  const [reviewBusyId,setReviewBusyId]=useState<string|null>(null);
+  const [reviewErrors,setReviewErrors]=useState<Record<string,string>>({});
   const [currency, setCurrency] = useState('USD');
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [negotiate, setNegotiate] = useState<RankedListing | null>(null);
@@ -558,6 +565,33 @@ export function ShoppingApp({
 
   const ranked = rankListings(state?.listings || []);
   const selected=ranked.find(l=>l.id===selectedSnapshot?.id)??selectedSnapshot;
+  const topFacebookDeals = ranked.filter((l) => l.marketplace === "facebook").slice(0, 5);
+  useEffect(() => {
+    if (state?.status === "complete" && topFacebookDeals.length > 0 && reviewShownFor !== state.id) {
+      setReviewShownFor(state.id);
+      setReviewDecisions({});
+      setReviewErrors({});
+      setReviewOpen(true);
+    }
+    // topFacebookDeals is derived from state on every render; only state identity/status should retrigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.status, state?.id]);
+  async function likeDeal(listing: RankedListing) {
+    setReviewBusyId(listing.id);
+    setReviewErrors((e) => { const next = { ...e }; delete next[listing.id]; return next; });
+    try {
+      await startNegotiationFor(listing, defaultNegotiationSettings(listing));
+      setReviewDecisions((d) => ({ ...d, [listing.id]: "liked" }));
+      setNegotiatedIds((ids) => [...new Set([...ids, listing.id])]);
+    } catch (e) {
+      setReviewErrors((err) => ({ ...err, [listing.id]: (e as Error).message }));
+    } finally {
+      setReviewBusyId(null);
+    }
+  }
+  function rejectDeal(listing: RankedListing) {
+    setReviewDecisions((d) => ({ ...d, [listing.id]: "rejected" }));
+  }
   async function findMore(listingId?:string){if(!state)return;setDiscoveryBusy(true);try{const result=await readJsonResponse<{demo?:boolean}>(await fetch('/api/workspace/discovery',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspaceId:state.id,listingId})}));if(result.demo)setError('Demo mode has no additional marketplace results.');}catch(e){setError((e as Error).message);}finally{setDiscoveryBusy(false);}}
   let listings = ranked.filter(
     (l) =>
@@ -898,7 +932,7 @@ export function ShoppingApp({
             </div>
           )}
         </section>
-        {state&&<div className="workspace-tabs" role="tablist" aria-label="Workspace views" onKeyDown={e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const next=workspaceTab==='listings'?'negotiations':'listings';setWorkspaceTab(next);(e.currentTarget.querySelectorAll('[role="tab"]')[next==='listings'?0:1] as HTMLButtonElement).focus();}}}><Button role="tab" aria-selected={workspaceTab==='listings'} onClick={()=>setWorkspaceTab('listings')}>Listings</Button><Button role="tab" aria-selected={workspaceTab==='negotiations'} onClick={()=>setWorkspaceTab('negotiations')}>Negotiations</Button><Button variant="outline" disabled={discoveryBusy||requestBusy} onClick={()=>void findMore()}>{discoveryBusy?'Queuing…':'Find more'}</Button></div>}
+        {state&&<div className="workspace-tabs" role="tablist" aria-label="Workspace views" onKeyDown={e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const next=workspaceTab==='listings'?'negotiations':'listings';setWorkspaceTab(next);(e.currentTarget.querySelectorAll('[role="tab"]')[next==='listings'?0:1] as HTMLButtonElement).focus();}}}><Button role="tab" aria-selected={workspaceTab==='listings'} onClick={()=>setWorkspaceTab('listings')}>Listings</Button><Button role="tab" aria-selected={workspaceTab==='negotiations'} onClick={()=>setWorkspaceTab('negotiations')}>Negotiations</Button>{topFacebookDeals.length>0&&<Button variant="outline" onClick={()=>setReviewOpen(true)}>Top deals</Button>}<Button variant="outline" disabled={discoveryBusy||requestBusy} onClick={()=>void findMore()}>{discoveryBusy?'Queuing…':'Find more'}</Button></div>}
         {state&&workspaceTab==='negotiations'?<WorkspaceNegotiations workspaceId={state.id} listings={state.listings} demo={state.demo}/>:<>
         <div className="mobile-tabs">
           <button
@@ -1338,6 +1372,23 @@ export function ShoppingApp({
           <NegotiationSetup key={negotiate.id} listing={negotiate} onStarted={()=>{setNegotiate(null);setWorkspaceTab('negotiations');}} />
         )}
       </Modal>
+
+      {/* Deal Review Modal */}
+      <DealReviewModal
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        listings={topFacebookDeals}
+        decisions={reviewDecisions}
+        busyId={reviewBusyId}
+        errors={reviewErrors}
+        onLike={(listing) => void likeDeal(listing)}
+        onReject={rejectDeal}
+        onConnect={() => {
+          setReviewOpen(false);
+          setConnectionMarket("facebook");
+          setConnectionOpen(true);
+        }}
+      />
 
       {/* Connection Modal */}
       <Modal

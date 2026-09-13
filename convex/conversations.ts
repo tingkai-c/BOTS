@@ -105,3 +105,15 @@ export const finishSend=mutation({args:{...server,key:v.string(),attemptId:v.id(
  if(!a.confirmed||send.action==='confirm')await ctx.db.patch(t._id,{status:a.confirmed?'agreed':'uncertain',reason:a.confirmed?'Price agreed. Handle payment and logistics yourself.':'Delivery is uncertain. Do not resend; check the conversation.'});
 }});
 export const attention=mutation({args:{...server,key:v.string(),reason:v.string()},handler:async(ctx,a)=>{authorizeServer(a.secret);const t=await owned(ctx,a.userId,a.key);if(t.status==='active')await ctx.db.patch(t._id,{status:'needs_attention',reason:a.reason.slice(0,500)});}});
+// Two-phase claim (mirrors claimSend/finishSend) so exactly one caller texts the user per thread,
+// regardless of whether agreement was observed via a fresh confirm or via reconciliation.
+export const claimNotification=mutation({args:{...server,key:v.string()},handler:async(ctx,a)=>{
+ authorizeServer(a.secret);const t=await owned(ctx,a.userId,a.key);
+ if(t.status!=='agreed'||t.notification)return null;
+ await ctx.db.patch(t._id,{notification:{status:'sent',detail:'Sending…',at:Date.now()}});
+ return t;
+}});
+export const finishNotification=mutation({args:{...server,key:v.string(),status:v.union(v.literal('sent'),v.literal('skipped')),detail:v.string()},handler:async(ctx,a)=>{
+ authorizeServer(a.secret);const t=await owned(ctx,a.userId,a.key);
+ await ctx.db.patch(t._id,{notification:{status:a.status,detail:a.detail.slice(0,500),at:Date.now()}});
+}});
