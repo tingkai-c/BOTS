@@ -57,7 +57,9 @@ import {
 import { photo } from "@/lib/demo/fixtures";
 import { AgentPanel, BrowserView } from "./agent-panel";
 import { ListingCard, MarketplaceBadge, DealScore, money } from "./listings";
-import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver } from './workspace-negotiations';
+import { NegotiationSetup, WorkspaceNegotiations, NegotiationObserver, startNegotiationFor } from './workspace-negotiations';
+import { DealReviewModal } from './deal-review';
+import { defaultNegotiationSettings } from '@/lib/negotiation/defaults';
 import { PlatformLogo } from "./platform-logos";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
@@ -648,6 +650,37 @@ export function ShoppingApp({
 
   const ranked = rankListings(state?.listings || []);
   const selected=ranked.find(l=>l.id===selectedSnapshot?.id)??selectedSnapshot;
+  const topFacebookDeals = ranked.filter((l) => l.marketplace === "facebook").slice(0, 5);
+  useEffect(() => {
+    if (!state || reviewShownFor === state.id || topFacebookDeals.length === 0) return;
+    // Facebook discovery can keep scrolling up new listings indefinitely (no cumulative cap in
+    // lib/agents/discovery.ts), so state.status can stay 'searching' forever — don't gate the
+    // review on full completion. Show it as soon as there's a full 5 to review, or once the
+    // search settles one way or another with at least one Facebook listing.
+    const searchSettled = state.status === "complete" || state.status === "failed";
+    if (searchSettled || topFacebookDeals.length >= 5) {
+      setReviewShownFor(state.id);
+      setReviewDecisions({});
+      setReviewErrors({});
+      setReviewOpen(true);
+    }
+  }, [state, reviewShownFor, topFacebookDeals.length]);
+  async function likeDeal(listing: RankedListing) {
+    setReviewBusyId(listing.id);
+    setReviewErrors((e) => { const next = { ...e }; delete next[listing.id]; return next; });
+    try {
+      await startNegotiationFor(listing, defaultNegotiationSettings(listing));
+      setReviewDecisions((d) => ({ ...d, [listing.id]: "liked" }));
+      setNegotiatedIds((ids) => [...new Set([...ids, listing.id])]);
+    } catch (e) {
+      setReviewErrors((err) => ({ ...err, [listing.id]: (e as Error).message }));
+    } finally {
+      setReviewBusyId(null);
+    }
+  }
+  function rejectDeal(listing: RankedListing) {
+    setReviewDecisions((d) => ({ ...d, [listing.id]: "rejected" }));
+  }
   async function findMore(listingId?:string){if(!state)return;setDiscoveryBusy(true);try{const result=await readJsonResponse<{demo?:boolean}>(await fetch('/api/workspace/discovery',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspaceId:state.id,listingId})}));if(result.demo)setError('Demo mode has no additional marketplace results.');}catch(e){setError((e as Error).message);}finally{setDiscoveryBusy(false);}}
   let listings = ranked.filter(
     (l) =>
@@ -988,7 +1021,7 @@ export function ShoppingApp({
             </div>
           )}
         </section>
-        {state&&<div className="workspace-tabs" role="tablist" aria-label="Workspace views" onKeyDown={e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const next=workspaceTab==='listings'?'negotiations':'listings';setWorkspaceTab(next);(e.currentTarget.querySelectorAll('[role="tab"]')[next==='listings'?0:1] as HTMLButtonElement).focus();}}}><Button role="tab" aria-selected={workspaceTab==='listings'} onClick={()=>setWorkspaceTab('listings')}>Listings</Button><Button role="tab" aria-selected={workspaceTab==='negotiations'} onClick={()=>setWorkspaceTab('negotiations')}>Negotiations</Button><Button variant="outline" disabled={discoveryBusy||requestBusy} onClick={()=>void findMore()}>{discoveryBusy?'Queuing…':'Find more'}</Button></div>}
+        {state&&<div className="workspace-tabs" role="tablist" aria-label="Workspace views" onKeyDown={e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();const next=workspaceTab==='listings'?'negotiations':'listings';setWorkspaceTab(next);(e.currentTarget.querySelectorAll('[role="tab"]')[next==='listings'?0:1] as HTMLButtonElement).focus();}}}><Button role="tab" aria-selected={workspaceTab==='listings'} onClick={()=>setWorkspaceTab('listings')}>Listings</Button><Button role="tab" aria-selected={workspaceTab==='negotiations'} onClick={()=>setWorkspaceTab('negotiations')}>Negotiations</Button>{topFacebookDeals.length>0&&<Button variant="outline" onClick={()=>setReviewOpen(true)}>Top deals</Button>}<Button variant="outline" disabled={discoveryBusy||requestBusy} onClick={()=>void findMore()}>{discoveryBusy?'Queuing…':'Find more'}</Button></div>}
         {state&&workspaceTab==='negotiations'?<WorkspaceNegotiations workspaceId={state.id} listings={state.listings} demo={state.demo}/>:<>
         <div className="mobile-tabs">
           <button
@@ -1456,6 +1489,23 @@ export function ShoppingApp({
           <NegotiationSetup key={negotiate.id} listing={negotiate} onStarted={()=>{setNegotiate(null);setWorkspaceTab('negotiations');}} />
         )}
       </Modal>
+
+      {/* Deal Review Modal */}
+      <DealReviewModal
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        listings={topFacebookDeals}
+        decisions={reviewDecisions}
+        busyId={reviewBusyId}
+        errors={reviewErrors}
+        onLike={(listing) => void likeDeal(listing)}
+        onReject={rejectDeal}
+        onConnect={() => {
+          setReviewOpen(false);
+          setConnectionMarket("facebook");
+          setConnectionOpen(true);
+        }}
+      />
 
       {/* Connection Modal */}
       <Modal

@@ -33,6 +33,7 @@
     "react-dom": "latest",
     "steel-sdk": "latest",
     "tailwind-merge": "latest",
+    "twilio": "^6.1.1",
     "zod": "latest"
   },
   "devDependencies": {
