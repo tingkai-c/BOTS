@@ -1,7 +1,7 @@
 import type { Locator, Page } from 'playwright-core';
 import type { Listing } from '@/lib/schemas';
 import { messageSchema, type ConversationMessage } from '@/lib/negotiation/contracts';
-import { openSellerConversation as facebook } from './facebook/messaging';
+import { openFacebookConversation } from './facebook/conversation';
 import { openSellerConversation as ebay } from './ebay/messaging';
 import { openSellerConversation as kijiji } from './kijiji/messaging';
 import { validateListingUrl } from './shared';
@@ -13,7 +13,10 @@ export interface ConversationAdapter {read():Promise<Transcript>;send(text:strin
  * stop as needs-attention, never fall back to guessing or scanning a whole inbox. */
 export async function openConversation(page:Page,listing:Listing):Promise<ConversationAdapter>{
  validateListingUrl(listing.listingUrl,listing.marketplace);
- const box=await ({facebook,ebay,kijiji}[listing.marketplace])(page,listing);
+ // Marketplace publishes none of the message identity/direction attributes below, so Facebook
+ // reads its own transcript from the Messenger DOM instead of the generic attribute contract.
+ if(listing.marketplace==='facebook')return openFacebookConversation(page,listing);
+ const box=await ({ebay,kijiji}[listing.marketplace])(page,listing);
  const scopes=page.locator('[data-conversation-id], [data-thread-id], [role="log"]');
  const candidates=await scopes.count();let root:Locator|undefined;
  for(let i=0;i<candidates;i++){const scope=scopes.nth(i);const sourceId=new URL(listing.listingUrl).pathname.split('/').filter(Boolean).pop();if(await scope.getAttribute('data-listing-id')===sourceId||await scope.locator('a').evaluateAll((links,url)=>links.some(a=>(a as HTMLAnchorElement).href.split('?')[0]===url.split('?')[0]),listing.listingUrl)){if(root)throw new Error('Conversation identity is ambiguous.');root=scope;}}
