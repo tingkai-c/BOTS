@@ -1,6 +1,7 @@
 import type { Listing, RankedListing } from '@/lib/schemas';
 export function rankListings(listings:Listing[]):RankedListing[]{return listings.map(l=>{
- const prices=listings.filter(x=>x.currency===l.currency&&x.similarityScore>=.5).map(x=>x.price+(x.shippingCost??0)).sort((a,b)=>a-b);
+ if(l.currencyVerified===false)return {...l,dealScore:0,reason:'Currency unverified · price comparison unavailable',belowMedian:0};
+ const prices=listings.filter(x=>x.currency===l.currency&&x.currencyVerified!==false&&x.similarityScore>=.5).map(x=>x.price+(x.shippingCost??0)).sort((a,b)=>a-b);
  const median=prices.length ? (prices[Math.floor((prices.length-1)/2)]+prices[Math.floor(prices.length/2)])/2 : l.price;
  const total=l.price+(l.shippingCost??0);const belowMedian=median>0?Math.round((1-total/median)*100):0;
  const value=Math.max(0,Math.min(1,.65+(median-total)/Math.max(median,1)));

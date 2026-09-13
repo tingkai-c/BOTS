@@ -1,9 +1,10 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
-  serverExternalPackages: ['steel-sdk', 'playwright-core'],
+  serverExternalPackages: ['steel-sdk', 'playwright-core', 'agent-browser'],
   // Playwright loads browsers.json and runtime assets dynamically. Vercel's
   // dependency tracer cannot infer these paths through pnpm's symlink layout.
   outputFileTracingIncludes: {
+    '/api/workspace/worker': ['./node_modules/.pnpm/agent-browser@*/node_modules/agent-browser/bin/agent-browser-linux-x64'],
     '/api/**': [
       './node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/**/*',
     ],

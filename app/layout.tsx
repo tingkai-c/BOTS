@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
+import { WorkspaceShell } from '@/components/workspace-shell';
 import "./globals.css";
+import "./workspace.css";
 export const metadata: Metadata = {
+  icons: { icon: '/favicon.ico' },
   title: "Haggleface — A better find.",
   description:
     "Your AI shopping agent. Search secondhand marketplaces, compare real deals, and negotiate with confidence.",
@@ -14,7 +17,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        <Providers><WorkspaceShell>{children}</WorkspaceShell></Providers>
       </body>
     </html>
   );

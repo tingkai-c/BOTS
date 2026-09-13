@@ -1,0 +1,59 @@
+/* Workspace-only additions. Shared shopping styles remain in globals.css. */
+.global-workspace { display:flex; min-height:100vh; }
+.global-content { flex:1; min-width:0; }
+.global-sidebar { width:220px; flex-shrink:0; padding:24px 16px; display:flex; flex-direction:column; position:sticky; top:0; height:100vh; border-right:1px solid var(--border); background:#f5f6f1; gap:24px; }
+.sidebar-brand { font-size:23px; font-weight:750; color:var(--primary); }
+.global-sidebar nav, .sidebar-bottom, .mobile-sidebar nav { display:flex; flex-direction:column; gap:8px; }
+.global-sidebar a, .mobile-sidebar a { display:flex; align-items:center; gap:12px; padding:11px 10px; border-radius:8px; text-decoration:none; color:inherit; }
+.global-sidebar a[aria-current], .mobile-sidebar a[aria-current] { background:#e0e9dc; color:var(--primary); }
+.sidebar-bottom { margin-top:auto; }
+.sidebar-account { display:flex; align-items:center; gap:10px; min-width:0; }
+.sidebar-account div { min-width:0; }
+.sidebar-account strong, .sidebar-account small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sidebar-account small { font-size:11px; color:var(--muted-foreground); }
+.sidebar-toggle { align-self:flex-start; padding:8px; }
+.sidebar-collapsed .global-sidebar { width:76px; }
+.sidebar-collapsed .global-sidebar a span, .sidebar-collapsed .sidebar-account div, .sidebar-collapsed .sidebar-bottom>.button { display:none; }
+.mobile-nav-button { display:none; }
+.workspace-page { max-width:1040px; margin:0 auto; padding:48px 28px; }
+.workspace-page h1 { font-size:32px; margin-bottom:12px; }
+.workspace-page h2 { font-size:21px; margin:24px 0 12px; }
+.workspace-page p { line-height:1.6; margin-bottom:16px; }
+.history-list { list-style:none; padding:0; margin:24px 0; }
+.history-list a { display:flex; flex-direction:column; padding:20px 8px; border-bottom:1px solid var(--border); gap:8px; color:inherit; text-decoration:none; }
+.history-list a:hover { background:#eef2e9; }
+.history-list span { font-size:13px; color:var(--muted-foreground); }
+.settings-markets { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+.settings-markets article { border:1px solid var(--border); border-radius:12px; padding:20px; }
+.workspace-tabs { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:0 28px 20px; }
+.workspace-tabs .button, .workspace-page .button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:36px; padding:8px 14px; border:1px solid var(--border); border-radius:8px; font-weight:600; }
+.workspace-tabs .button-primary, .workspace-page .button-primary { background:var(--primary); color:var(--primary-foreground); }
+.workspace-tabs .button-outline, .workspace-page .button-outline { background:var(--card); }
+.workspace-tabs button[aria-selected=true] { background:var(--primary); color:white; }
+.conversation-list { display:grid; gap:16px; }
+.conversation-card { padding:20px; border:1px solid var(--border); border-radius:12px; }
+.conversation-messages { display:flex; flex-direction:column; gap:8px; max-height:420px; overflow:auto; margin:16px 0; }
+.conversation-message { padding:10px 14px; background:#f0f2ec; border-radius:8px; max-width:90%; white-space:pre-wrap; }
+.conversation-message.outgoing { align-self:flex-end; background:#e0ecd9; }
+.conversation-controls { display:flex; flex-wrap:wrap; gap:8px; }
+.negotiation-fields { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.negotiation-fields label { display:flex; flex-direction:column; gap:6px; }
+.negotiation-fields input, .negotiation-fields select, .negotiation-fields textarea { border:1px solid var(--border); border-radius:6px; padding:9px; width:100%; }
+.negotiation-fields .full { grid-column:1/-1; }
+@media(max-width:900px) {
+  .global-sidebar { width:76px; }
+  .global-sidebar a span, .sidebar-account div, .sidebar-bottom>.button { display:none; }
+  .settings-markets { grid-template-columns:1fr; }
+  .global-sidebar .sidebar-brand { font-size:0; }
+  .global-sidebar .sidebar-brand:after { content:'h.'; font-size:23px; }
+}
+@media(max-width:640px) {
+  .global-sidebar { display:none; }
+  .mobile-nav-button { display:flex; gap:10px; align-items:center; padding:14px 20px; width:100%; border-bottom:1px solid var(--border); }
+  .workspace-page { padding:28px 18px; }
+  .mobile-sidebar { display:flex; flex-direction:column; gap:16px; }
+  .mobile-sidebar .sidebar-account div { display:block; }
+  .mobile-sidebar a span { display:inline; }
+  .negotiation-fields { grid-template-columns:1fr; }
+  .workspace-tabs { margin:0 16px 16px; }
+}
