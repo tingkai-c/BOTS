@@ -329,8 +329,14 @@ export function ShoppingApp({
     if (event.type === "state") {
       setState(event.state);
       restoredId.current = event.state.id;
-      if (event.state.filters?.maxPrice)
-        setMaxPrice(String(event.state.filters.maxPrice));
+      if (event.state.filters) {
+        setMaxPrice(event.state.filters.maxPrice ? String(event.state.filters.maxPrice) : "");
+        setCondition(event.state.filters.condition);
+        setMarket(event.state.filters.marketplace);
+        setLocation(event.state.filters.location);
+        setRadius(event.state.filters.radius);
+        setCurrency(event.state.filters.currency ?? "USD");
+      }
       window.history.replaceState(null, "", `/search/${event.state.id}`);
       return;
     }
@@ -561,7 +567,6 @@ export function ShoppingApp({
   async function findMore(listingId?:string){if(!state)return;setDiscoveryBusy(true);try{const result=await readJsonResponse<{demo?:boolean}>(await fetch('/api/workspace/discovery',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workspaceId:state.id,listingId})}));if(result.demo)setError('Demo mode has no additional marketplace results.');}catch(e){setError((e as Error).message);}finally{setDiscoveryBusy(false);}}
   let listings = ranked.filter(
     (l) =>
-      l.currency === currency &&
       (market === "all" || l.marketplace === market) &&
       (!maxPrice || l.price <= Number(maxPrice)) &&
       (condition === "any" || l.condition === condition) &&
