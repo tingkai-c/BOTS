@@ -1,4 +1,5 @@
 allowBuilds:
+  agent-browser: false
   bufferutil: false
   core-js: false
   esbuild: true

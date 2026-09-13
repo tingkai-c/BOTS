@@ -13,6 +13,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
+    "probe:steel": "node scripts/probe-steel.mjs",
+    "probe:agent-browser": "node scripts/probe-agent-browser.mjs",
     "convex:dev": "convex dev"
   },
   "dependencies": {
@@ -21,6 +23,7 @@
     "@clerk/ui": "^1.32.3",
     "@radix-ui/react-dialog": "latest",
     "@radix-ui/react-slot": "latest",
+    "agent-browser": "0.37.1",
     "ai": "latest",
     "class-variance-authority": "latest",
     "clsx": "latest",
