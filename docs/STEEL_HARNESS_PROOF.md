@@ -1,7 +1,7 @@
 # Steel harness compatibility gate
 
-Status: **direct agent-browser local and SDK-owned Steel cloud proofs passed**.
-Vercel proof is blocked by deployment-author permissions. The Steel CLI external-attachment path remains blocked.
+Status: **direct agent-browser local, SDK-owned Steel cloud, and Vercel runtime proofs passed**.
+The Steel CLI external-attachment path remains blocked.
 Observed 2026-09-13 on branch `feat/steel-harness-proof`, based on `f5f6129`.
 
 ## Selected path: SDK-owned sessions + direct agent-browser
@@ -136,9 +136,36 @@ Inspect: https://vercel.com/tingkaic/haggleface/EZTM23qSWMwaNJSv2ND29Y7JJAt7
 Allocated URL (not a working, verified preview):
 https://haggleface-nkihdjlt0-tingkaic.vercel.app
 
-An authorized project owner must resolve deployment access or deploy reviewed
-work under their own legitimate authorship. No author metadata was changed to
-bypass this gate. No hosted probe ran; Vercel runtime compatibility is unverified.
+This initial access blocker cleared after creating the branch commit and PR #7:
+the normal Git preview and subsequent CLI previews deployed successfully. No
+author metadata was changed to bypass the gate.
+
+### Successful hosted proof
+
+The first authenticated Vercel run exposed a real bundling bug: Turbopack
+rewrote `require.resolve('agent-browser/package.json')` into a numeric module ID,
+so `dirname` failed before any browser session was created. The compiled artifact
+contained `dirname(21266)`. The probe now uses the pinned physical pnpm package
+path that `next.config.ts` explicitly traces. Setup failures report their stage
+and a restricted error code; only credential-free version execution can report
+stderr.
+
+After fixing that path, the deployed probe returned **HTTP 200, passed: true**:
+
+- Preview: https://haggleface-rl551kw6c-tingkaic.vercel.app
+- Deployment: `dpl_56SzuSJmQfagUxQ8xzAfMm6duFDT`
+- Runtime: Linux x64, `agent-browser 0.37.1`.
+- Unauthenticated request: HTTP 401.
+- Authenticated request: 5044ms end to end.
+- Two concurrent controlled sessions: 2778ms and 3714ms, both PASSED.
+- Snapshot/reference actions, isolation, Playwright handoff, browser usability
+  after harness disconnect, and SDK release all passed without cleanup errors.
+- Probe token was private and deployment-specific, expiring at
+  `2026-09-13T04:52:52.610Z`; project environment settings were not modified.
+
+The local probe also passed after the fix (715ms and 729ms), along with typecheck,
+ESLint, and Vercel's production build. Hard-kill cleanup, real marketplace
+profiles/selectors, and seller messaging remain unverified.
 
 ## Remaining proof before product integration
 
@@ -146,7 +173,7 @@ bypass this gate. No hosted probe ran; Vercel runtime compatibility is unverifie
 2. Run snapshot -> fill by ref -> click by ref -> verify on a controlled page.
 3. Prove two sessions cannot share refs or state, and stale refs are refreshed.
 4. Verify script/harness handoff and session/daemon cleanup on success/failure.
-5. Run the packaged proof in a Vercel preview (user authorized; Vercel author access blocked).
+5. Vercel successful-path runtime proof passed; forced-termination recovery remains.
 6. Measure runtime, bundle size, and temporary-file behavior. No local result is
    evidence that Vercel packaging or live marketplace behavior works.
 
@@ -154,7 +181,9 @@ The initial Steel CLI preflight created no cloud sessions. The subsequent direct
 agent-browser cloud probe created and released two fresh profile-free sessions
 using shared Steel credits. No marketplace navigation, seller messages, database
 access, or populated environment-file changes were performed. The subsequent
-preview deployment attempt was blocked before runtime verification.
+initial preview deployment attempt was blocked; subsequent previews and the
+controlled hosted runtime proof succeeded, creating and releasing two fresh
+profile-free Steel sessions.
 
 ## Sources
 

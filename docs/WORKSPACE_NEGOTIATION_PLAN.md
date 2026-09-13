@@ -6,9 +6,9 @@ it does not override AGENTS.md's exact-message approval requirement.
 
 ## Milestones and current state
 
-1. **Harness compatibility:** direct agent-browser local and Steel-cloud proofs passed after
+1. **Harness compatibility:** direct agent-browser local, Steel-cloud, and Vercel runtime proofs passed after
    user-approved retention of SDK-owned sessions. Steel CLI external attachment
-   is unsupported in the tested release. Vercel proof still pending.
+   is unsupported in the tested release. Hard-kill cleanup and marketplace integration remain pending.
    See [proof evidence](STEEL_HARNESS_PROOF.md) before selecting deployment wiring.
 2. **Workspace persistence:** pending. Typed records, ownership, scheduling
    primitives, compatibility with existing saved searches and negotiations.
