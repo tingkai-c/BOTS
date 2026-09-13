@@ -26,8 +26,11 @@ import {
   Info,
   ListFilter,
   Loader2,
+  LogIn,
+  LogOut,
   MapPin,
   Plus,
+  RefreshCw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -73,7 +76,7 @@ function AuthControl() {
     <div className="auth-controls">
       <SignInButton mode="modal">
         <Button variant="outline" size="sm" className="sign-in-btn">
-          Sign in
+          Log in
         </Button>
       </SignInButton>
       <SignUpButton mode="modal">
@@ -130,6 +133,18 @@ const examples = [
 
 const ALL_MARKETS: Marketplace[] = ["kijiji", "ebay", "facebook"];
 
+const MARKETPLACE_LABELS: Record<Marketplace, string> = {
+  facebook: "Facebook",
+  ebay: "eBay",
+  kijiji: "Kijiji",
+};
+
+const MARKETPLACE_FULL_NAMES: Record<Marketplace, string> = {
+  facebook: "Facebook Marketplace",
+  ebay: "eBay",
+  kijiji: "Kijiji",
+};
+
 export function ShoppingApp({
   demo,
   initialId,
@@ -176,6 +191,11 @@ export function ShoppingApp({
     kijiji: false,
   });
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [agentPanelWidth, setAgentPanelWidth] = useState<number | null>(null);
+  const isDragging = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   const isMarketConnected = (m: Marketplace) =>
     m === "facebook" ? connectedMarkets.facebook || connected : connectedMarkets[m];
@@ -189,6 +209,39 @@ export function ShoppingApp({
   const input = useRef<HTMLInputElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
+
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only trigger on the divider bar itself, not the toggle button
+    if ((e.target as HTMLElement).closest('.panel-toggle-btn')) return;
+    e.preventDefault();
+    isDragging.current = true;
+    dragStartX.current = e.clientX;
+    const workspace = workspaceRef.current;
+    const currentWidth = agentPanelWidth ??
+      (workspace ? workspace.offsetWidth * 0.42 : 420);
+    dragStartWidth.current = currentWidth;
+    document.body.classList.add('is-resizing');
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return;
+      const dx = dragStartX.current - ev.clientX; // dragging left expands agent panel
+      const workspace = workspaceRef.current;
+      const maxWidth = workspace ? workspace.offsetWidth * 0.70 : 800;
+      const minWidth = 260;
+      const newWidth = Math.min(maxWidth, Math.max(minWidth, dragStartWidth.current + dx));
+      setAgentPanelWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      isDragging.current = false;
+      document.body.classList.remove('is-resizing');
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [agentPanelWidth]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -475,6 +528,21 @@ export function ShoppingApp({
       setConnectionError(
         e instanceof Error ? e.message : "Connection failed. Please retry.",
       );
+    } finally {
+      setConnectionBusy(false);
+    }
+  }
+
+  function disconnectMarket(marketToDisconnect: Marketplace) {
+    setConnectionBusy(true);
+    try {
+      setConnectedMarkets((prev) => ({
+        ...prev,
+        [marketToDisconnect]: false,
+      }));
+      if (marketToDisconnect === "facebook") {
+        setConnected(false);
+      }
     } finally {
       setConnectionBusy(false);
     }
@@ -833,7 +901,7 @@ export function ShoppingApp({
           </button>
         </div>
 
-        <div className={`workspace show-${mobileTab} ${panelCollapsed ? "panel-collapsed" : ""}`}>
+        <div ref={workspaceRef} className={`workspace show-${mobileTab} ${panelCollapsed ? "panel-collapsed" : ""}`}>
           <section className="results-panel">
             <div className="results-nav">
               <div className="tab-pill-group">
@@ -1092,7 +1160,13 @@ export function ShoppingApp({
             )}
           </section>
 
-          <div className="workspace-divider">
+          <div
+            className="workspace-divider"
+            onMouseDown={handleDividerMouseDown}
+            role="separator"
+            aria-label="Drag to resize panels"
+            title="Drag to resize"
+          >
             <button
               type="button"
               className="panel-toggle-btn"
@@ -1111,6 +1185,7 @@ export function ShoppingApp({
             onConnect={() => setConnectionOpen(true)}
             isCollapsed={panelCollapsed}
             onExpand={() => setPanelCollapsed(false)}
+            style={!panelCollapsed && agentPanelWidth ? { flex: `0 0 ${agentPanelWidth}px`, width: `${agentPanelWidth}px` } : undefined}
           />
         </div>
       </main>
@@ -1171,8 +1246,8 @@ export function ShoppingApp({
             <MarketplaceBadge marketplace={selected.marketplace} />
             <h3>{selected.title}</h3>
             <div className="detail-price">
-              {money(selected.price)}
-              <span>{selected.condition}</span>
+              <strong>{money(selected.price)}</strong>
+              {selected.condition && <span>{selected.condition}</span>}
             </div>
             <DealScore listing={selected} />
             <p>
@@ -1181,10 +1256,12 @@ export function ShoppingApp({
             </p>
             <div className="detail-facts">
               <span>
-                Seller<strong>{selected.sellerName || "Not listed"}</strong>
+                <span className="fact-label">Seller</span>
+                <strong>{selected.sellerName || "Not listed"}</strong>
               </span>
               <span>
-                Location<strong>{selected.location || "Not listed"}</strong>
+                <span className="fact-label">Location</span>
+                <strong>{selected.location || "Not listed"}</strong>
               </span>
             </div>
             <div className="detail-actions">
@@ -1218,7 +1295,7 @@ export function ShoppingApp({
                 <ArrowUpRight size={14} />
               </a>
             </div>
-            {inspectUrl && <BrowserView url={inspectUrl} />}{" "}
+            {inspectUrl && <BrowserView url={inspectUrl} />}
             {inspectText && (
               <div className="inspection-result">
                 <strong>
@@ -1263,53 +1340,130 @@ export function ShoppingApp({
                 type="button"
                 disabled={!!connectionUrl || connectionBusy}
                 onClick={() => setConnectionMarket(m)}
-                className={connectionMarket === m ? "selected" : ""}
+                className={`tone-market-tab ${connectionMarket === m ? "selected" : ""} ${isMarketConnected(m) ? "is-connected" : ""}`}
               >
                 <MarketplaceBadge marketplace={m} />
+                {isMarketConnected(m) && (
+                  <span className="tab-connected-pill">
+                    <Check size={10} />
+                    Connected
+                  </span>
+                )}
               </button>
             ))}
           </div>
-          {demo ? (
+
+          {isMarketConnected(connectionMarket) ? (
+            <div className="connection-card connected-state">
+              <div className="connection-status-pill">
+                <Check size={13} />
+                <span>Account connected</span>
+              </div>
+              <div className="connection-status-icon-wrap">
+                <PlatformLogo market={connectionMarket} size={40} />
+              </div>
+              <h3>{MARKETPLACE_FULL_NAMES[connectionMarket]}</h3>
+              <p>
+                {demo
+                  ? "Your demo account profile is active. Automated searches and offers are enabled for this marketplace."
+                  : "Your secure Steel browser session is active. Haggleface can search and draft offers on your behalf."}
+              </p>
+              <div className="connection-actions-row">
+                <Button
+                  variant="outline"
+                  className="connection-logout-btn"
+                  disabled={connectionBusy}
+                  onClick={() => disconnectMarket(connectionMarket)}
+                >
+                  <LogOut size={14} />
+                  <span>Log out of {MARKETPLACE_LABELS[connectionMarket]}</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="connection-reconnect-btn"
+                  disabled={connectionBusy}
+                  onClick={() => void connect(demo ? "save" : "open")}
+                >
+                  <RefreshCw size={13} />
+                  <span>Reconnect</span>
+                </Button>
+              </div>
+            </div>
+          ) : demo ? (
             <div className="connection-demo">
-              <ShieldCheck size={34} />
+              <ShieldCheck size={36} className="connection-shield-icon" />
               <h3>Your account stays yours.</h3>
               <p>
                 This is demo mode. Connecting simulates a saved marketplace
                 profile. Add Steel, Clerk, and Convex credentials to sign in to
                 a real account.
               </p>
-              <Button onClick={() => void connect("save")}>
-                Try demo connection
+              <Button
+                className="connection-login-btn"
+                disabled={connectionBusy}
+                onClick={() => void connect("save")}
+              >
+                <LogIn size={15} />
+                <span>Log in to {MARKETPLACE_LABELS[connectionMarket]}</span>
+                <span className="btn-subtext">· Try demo connection</span>
                 <ArrowRight size={14} />
               </Button>
             </div>
           ) : connectionUrl ? (
-            <>
+            <div className="connection-live-interactive">
               <BrowserView url={connectionUrl} interactive />
               <p className="field-hint">
                 Finish signing in above, then save your browser profile.
                 Sessions expire after 5 minutes.
               </p>
-              <Button
-                disabled={connectionBusy}
-                onClick={() => void connect("save")}
-              >
-                I’m signed in · Save connection
-              </Button>
-            </>
+              <div className="connection-actions-row">
+                <Button
+                  className="connection-login-btn"
+                  disabled={connectionBusy}
+                  onClick={() => void connect("save")}
+                >
+                  {connectionBusy ? (
+                    <Loader2 size={15} className="spin" />
+                  ) : (
+                    <Check size={15} />
+                  )}
+                  <span>I’m signed in · Save connection</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="connection-cancel-btn"
+                  disabled={connectionBusy}
+                  onClick={() => void connect("cancel")}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
           ) : (
-            <Button
-              disabled={connectionBusy}
-              onClick={() => void connect("open")}
-            >
-              {connectionBusy ? (
-                <Loader2 size={16} className="spin" />
-              ) : (
-                <ShieldCheck size={16} />
-              )}
-              Open secure sign-in browser
-            </Button>
+            <div className="connection-live-init">
+              <ShieldCheck size={36} className="connection-shield-icon" />
+              <h3>Sign in to {MARKETPLACE_FULL_NAMES[connectionMarket]}</h3>
+              <p>
+                Sign in directly in an isolated Steel cloud browser. Haggleface
+                never sees or stores your password.
+              </p>
+              <Button
+                className="connection-login-btn"
+                disabled={connectionBusy}
+                onClick={() => void connect("open")}
+              >
+                {connectionBusy ? (
+                  <Loader2 size={15} className="spin" />
+                ) : (
+                  <LogIn size={15} />
+                )}
+                <span>Log in to {MARKETPLACE_LABELS[connectionMarket]}</span>
+                <span className="btn-subtext">· Open secure browser</span>
+                <ArrowRight size={14} />
+              </Button>
+            </div>
           )}
+
           {connectionError && (
             <div className="error-state" role="alert">
               {connectionError}
@@ -1322,25 +1476,43 @@ export function ShoppingApp({
       <Modal
         open={profileOpen}
         onOpenChange={setProfileOpen}
-        title="Your demo workspace"
-        description="Explore Haggleface without creating an account."
+        title="Your workspace"
+        description="Manage your account session and marketplace connections."
       >
         <div className="profile-panel">
-          <span className="avatar">J</span>
+          <span className="avatar large">J</span>
           <h3>Welcome, curious shopper.</h3>
           <p>
             Demo searches are saved in this browser tab. Configure Clerk to sign
             in and Convex to keep live searches across devices.
           </p>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setProfileOpen(false);
-              setConnectionOpen(true);
-            }}
-          >
-            Manage marketplace connections
-          </Button>
+          <div className="profile-actions">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setProfileOpen(false);
+                setConnectionOpen(true);
+              }}
+            >
+              Manage marketplace connections
+            </Button>
+            <Button
+              variant="outline"
+              className="profile-logout-btn"
+              onClick={() => {
+                setConnected(false);
+                setConnectedMarkets({
+                  facebook: false,
+                  ebay: false,
+                  kijiji: false,
+                });
+                setProfileOpen(false);
+              }}
+            >
+              <LogOut size={14} />
+              <span>Log out of session</span>
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>
