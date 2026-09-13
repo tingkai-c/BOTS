@@ -38,8 +38,8 @@ Copy `.env.example` to `.env.local` and fill in:
 1. Create a Clerk application and activate the **Convex integration** in its dashboard. Configure the frontend URL and allowed redirects for your deployed domain.
 2. Run `pnpm convex:dev` to create/select a Convex deployment. Set `CLERK_JWT_ISSUER_DOMAIN` and `CONVEX_SERVER_SECRET` in its dashboard, then sync the functions.
 3. Add all keys above and restart Next.js. Live mode deliberately requires Clerk and Convex instead of putting authenticated browser profiles in ephemeral process memory.
-4. Sign into Haggleface. Open **Connect Facebook** (the dialog also supports eBay). Start the interactive Steel browser, sign into the marketplace yourself, then save the connection. Steel snapshots the persistent profile on release. Passwords never enter this application's database.
-5. Start a search. Both selected marketplaces run concurrently through **Steel + Playwright**, without marketplace search APIs. Convex receives each validated listing and publishes reactive state to the frontend.
+4. Sign into Haggleface. Open **Connect Facebook** (the dialog also supports eBay and Kijiji). Start the interactive Steel browser, sign into the marketplace yourself, then save the connection. Steel snapshots the persistent profile on release. Passwords never enter this application's database.
+5. Start a search. All selected marketplaces run concurrently through **Steel + Playwright**, without marketplace search APIs. Convex receives each validated listing and publishes reactive state to the frontend.
 
 Vercel supplies HTTPS for the shared app and branch previews. No tailnet membership is needed.
 
@@ -47,7 +47,7 @@ Vercel supplies HTTPS for the shared app and branch previews. No tailnet members
 
 **Verified locally:** credential-free text search, image upload, structured demo identification, incremental results, filtering/sorting, saved listings, detail inspection, streamed offer drafts, editable approval, simulated send, restored searches, mobile agent tabs, keyboard/dialog behavior, validation errors, and clean browser console. TypeScript, ESLint, unit tests, browser tests, and production build pass.
 
-**Real integration paths implemented:** Steel SDK `sessions.create`, Playwright CDP connections, embedded `debugUrl` live view, interactive login, persistent `profileId` / `persistProfile`, cleanup, independent Facebook/eBay DOM extraction, listing inspection, approved messaging, Clerk auth, Convex persistence/subscriptions, and AI SDK 7 structured and streamed calls.
+**Real integration paths implemented:** Steel SDK `sessions.create`, Playwright CDP connections, embedded `debugUrl` live view, interactive login, persistent `profileId` / `persistProfile`, cleanup, independent Facebook/eBay/Kijiji DOM extraction, listing inspection, approved messaging, Clerk auth, Convex persistence/subscriptions, and AI SDK 7 structured and streamed calls.
 
 **Claude verified:** a real `claude-sonnet-5` API call returned schema-validated structured product data. The provider reads `ANTHROPIC_API_KEY`; for existing installations, a Claude-format key in the old `OPENAI_API_KEY` field is also recognized. An actual OpenAI key is never sent to Anthropic. `.env.local` takes precedence over `.env` for model selection.
 
@@ -62,7 +62,7 @@ Vercel supplies HTTPS for the shared app and branch previews. No tailnet members
 - Demo state is stored in the current tab's `sessionStorage`, not Convex. Live state is persisted to Convex before execution and after each listing/event. Images are sent to identification but are not retained in stored search state.
 - Saved hearts are local to the current app instance. Search results survive reload in the same tab.
 - Demo images are representative product photography, not scraped seller photos. Demo “Browse marketplace” links open marketplace search/home pages, never fabricated seller listings.
-- Facebook uses the connected account's marketplace location; radius is included in the search URL. Set the city inside Facebook for accurate local results. Unknown shipping is displayed as unknown, not free.
+- Facebook uses the connected account's marketplace location; radius is included in the search URL. Set the city inside Facebook for accurate local results. eBay and Kijiji use the typed location and radius directly as search parameters. Unknown shipping is displayed as unknown, not free. Kijiji prices are in CAD but are carried through the schema's `USD` currency field unconverted, so cross-marketplace price comparisons involving Kijiji are not currency-adjusted.
 - Searches are bounded to 30–35 DOM cards per source and a five-minute Steel timeout. The workflow finishes within a single streaming server request; it is not a durable background workflow across server restarts. Completed sessions are released and the UI shows the finished state.
 
 ## Project map
@@ -74,7 +74,7 @@ components/ui/           shadcn-style Radix dialog and cva/Slot button primitive
 lib/agents/              Bounded parallel orchestration and AI comparison tools
 lib/ai/                  AI SDK structured multimodal identification
 lib/steel/               Steel session lifecycle and Playwright CDP connections
-lib/marketplaces/        Separate Facebook/eBay search, extraction, messaging
+lib/marketplaces/        Separate Facebook/eBay/Kijiji search, extraction, messaging
 lib/scoring/             Deterministic deal scoring and deduplication
 lib/schemas/             Zod input, listing, identification and approval contracts
 lib/server/              Auth, Convex access, signed approval capability

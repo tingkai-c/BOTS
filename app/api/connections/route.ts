@@ -22,13 +22,20 @@ export async function POST(req: Request) {
           if (input.marketplace === 'facebook') {
             const cookies = await page.context().cookies();
             loggedIn = cookies.some(c => c.name === 'c_user' && /(^|\.)facebook\.com$/.test(c.domain));
-          } else {
+          } else if (input.marketplace === 'ebay') {
             // Anonymous eBay visitors also get cookies. Verify an authenticated page,
             // rather than treating the presence of a tracking cookie as a login.
             await page.goto('https://www.ebay.com/mys/home', { waitUntil: 'domcontentloaded', timeout: 25000 });
             const url = new URL(page.url());
             loggedIn = url.hostname === 'www.ebay.com' && url.pathname.startsWith('/mys/') &&
               await page.getByRole('heading', { name: /My eBay|Summary|Overview/i }).count() > 0;
+          } else {
+            // Same reasoning as eBay: confirm an authenticated page loads rather than
+            // trusting the presence of any Kijiji cookie.
+            await page.goto('https://www.kijiji.ca/m-my-ads/active.html', { waitUntil: 'domcontentloaded', timeout: 25000 });
+            const url = new URL(page.url());
+            loggedIn = url.hostname === 'www.kijiji.ca' && url.pathname.startsWith('/m-my-ads') &&
+              await page.getByRole('heading', { name: /My Ads|Active/i }).count() > 0;
           }
           if (!loggedIn) throw new Error('Sign-in is not complete. Finish signing in in the browser first.');
         } finally { await browser.close().catch(() => {}); }
@@ -45,7 +52,7 @@ export async function POST(req: Request) {
       await saveConnection(user, input.marketplace, session.profileId, session.id);
       const { browser, page } = await connectBrowser(session.id);
       try {
-        await page.goto(input.marketplace === 'facebook' ? 'https://www.facebook.com/' : 'https://signin.ebay.com/ws/eBayISAPI.dll?SignIn', { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.goto(input.marketplace === 'facebook' ? 'https://www.facebook.com/' : input.marketplace === 'ebay' ? 'https://signin.ebay.com/ws/eBayISAPI.dll?SignIn' : 'https://www.kijiji.ca/t-login.html', { waitUntil: 'domcontentloaded', timeout: 25000 });
       } finally { await browser.close().catch(() => {}); }
       return Response.json({ debugUrl: viewerUrl(session.debugUrl, true) });
     } catch (e) { await releaseSession(session.id).catch(() => {}); throw e; }
