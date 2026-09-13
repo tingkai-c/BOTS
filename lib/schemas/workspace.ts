@@ -16,12 +16,14 @@ export const searchStateSchema = z.object({
   runs: z.array(z.object({
     marketplace: marketplaceSchema,
     status: z.enum(['queued', 'searching', 'complete', 'failed', 'login_required']),
+    outcome: z.enum(['running','complete','no_matches','partial','needs_sign_in','failed']).optional(),
     debugUrl: z.string().optional(), sessionId: z.string().optional(), message: z.string(),
   })),
   identification: identificationSchema.optional(),
   summary: z.string().optional(),
   filters: z.object({
     maxPrice: z.number().positive().optional(),
+    currency: z.enum(['USD','CAD']).optional(),
     condition: z.enum(['any', 'Like new', 'Good', 'Fair']),
     marketplace: z.enum(['all', 'facebook', 'ebay', 'kijiji']),
     location: z.string(), radius: z.number().positive(),

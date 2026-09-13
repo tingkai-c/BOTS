@@ -9,6 +9,10 @@
  */
 
 import type * as access from "../access.js";
+import type * as conversations from "../conversations.js";
+import type * as crons from "../crons.js";
+import type * as dispatcher from "../dispatcher.js";
+import type * as negotiationValidators from "../negotiationValidators.js";
 import type * as store from "../store.js";
 import type * as validators from "../validators.js";
 import type * as work from "../work.js";
@@ -21,6 +25,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   access: typeof access;
+  conversations: typeof conversations;
+  crons: typeof crons;
+  dispatcher: typeof dispatcher;
+  negotiationValidators: typeof negotiationValidators;
   store: typeof store;
   validators: typeof validators;
   work: typeof work;

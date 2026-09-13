@@ -344,7 +344,7 @@ No new seller message means no automatic follow-up solely because another pollin
 
 ### Authorization contract — explicitly approved
 
-The user approved reconciling the previous exact-message-only repository requirement with **scoped, time-limited negotiation authorization**. `AGENTS.md` now reflects this decision. Autonomous sending remains unimplemented.
+The user approved reconciling the previous exact-message-only repository requirement with **scoped, time-limited negotiation authorization**. `AGENTS.md` reflects this decision. The bounded worker and controlled conversation tests now implement this contract; real marketplace delivery remains unverified.
 
 Explicit **Start negotiation** grants permission only for that negotiation’s seller conversation, within the persisted monetary limits, currency/cost basis, permitted actions, authorization version, and expiry. Preserve signed authorization and atomic per-message send claims. Recheck current authorization and conversation state immediately before each send.
 
@@ -496,12 +496,12 @@ If Vercel cannot reliably host the harness, present the measured failure and a m
 | Milestone | Completion evidence |
 |---|---|
 | **1. Harness/runtime proof** | Local, Steel cloud, and Vercel successful-path proof passed; failure-path cleanup and bundle measurement remain |
-| **2. Workspace foundation** | First slice implemented and test-backend deployed: validated search snapshots, typed workspace summaries, owner-only History/workspace queries, listing enrichment updates, pause persistence, and leased discovery/inspection jobs. Typed negotiation/message/send-attempt/account-monitoring records remain pending. |
-| **3. Navigation and UI** | Pending: shadcn sidebar, History, Settings, workspace views, detail/setup flow |
-| **4. Discovery pipeline** | Pending: timeout fixes, scripted detail collection, resumable batches, Kijiji verification, currency handling, recovery |
-| **5. Negotiation engine** | Pending: controlled multi-round conversations, authorized limits, agreement selection, verified/uncertain sends |
-| **6. Monitoring** | Pending: account batching, five-minute scheduling, Check now, pause/resume, expiry, recovery |
-| **7. Preview handoff** | Pending: repository checks, test-backend deployment, desktop/mobile QA, actual runtime evidence |
+| **2. Workspace foundation** | Implemented and test-backend deployed, including typed threads, messages, send attempts, and account monitoring; legacy records preserved. |
+| **3. Navigation and UI** | Implemented responsive sidebar, History, Settings, Listings/Negotiations views, detail/setup, monitoring controls, and labeled demo conversations. |
+| **4. Discovery pipeline** | Implemented synchronous card reads, detail enrichment, leased batches/cursors, separate CAD/USD handling, source outcomes, and bounded native recovery. Real marketplace layouts remain unverified. |
+| **5. Negotiation engine** | Implemented signed/versioned limits, exact-message claims, first-deal reservation, uncertainty reconciliation, and manual takeover; controlled multi-round tests pass. |
+| **6. Monitoring** | Implemented minute dispatcher, account-batched bounded workers, five-minute target, Check now, pause/resume, expiry, and continuations. |
+| **7. Preview handoff** | Core checks and all three demo browser/API smoke tests pass; final test backend deployed. Preview worker wiring is the remaining handoff step. |
 
 ### Workspace foundation checkpoint — 2026-09-13
 
@@ -513,7 +513,15 @@ If Vercel cannot reliably host the harness, present the measured failure and a m
 - Deployed additive schema/functions to **test `sensible-newt-347`**, using `pnpm exec convex run --deployment sensible-newt-347 --push work:due '{}'`. Deployment succeeded; no jobs were due. An owner-scoped History query succeeded, and the existing saved search remained present.
 - Three regression tests passed for legacy/ownership/pagination, original-query/pause/enrichment persistence, and competing/expired/stale work claims. Typecheck, lint, and build passed. Full suite: **9/10 pass**, with the same existing scoring fixture-count failure.
 
-Next: complete remaining typed persistence alongside its negotiation/monitoring consumers and build the navigation/History/Settings/workspace surfaces on these queries. Keep PR #7 unmerged until the user explicitly authorizes merging.
+This historical foundation checkpoint is superseded by the implementation status above. Keep PR #7 unmerged until the user explicitly authorizes merging.
+
+### Implementation handoff
+
+- Core checks: **17/17 unit tests**, TypeScript, ESLint, and Next.js production build passed. The earlier fixture-count assertion is fixed; Kijiji fixtures carry CAD.
+- **3/3 demo browser/API tests passed** against the local production build: search/filter/save/detail, controlled negotiation to price agreement, reload persistence, mobile layout/agent panel, image identification, connections, and invalid input/forged approval handling. Updated obsolete currency/negotiation assertions and fixed the missing favicon reference.
+- Final additive schema/functions deployed successfully to test **`sensible-newt-347`**; `work:due` returned no queued jobs. Production remains untouched.
+- Live messaging fails closed when conversation identity, complete history, availability, currency, or authorization cannot be verified. Conversation adapters require a stable listing association and message identity/direction metadata. They have not been validated against signed-in Facebook/eBay/Kijiji DOMs, and real seller messages were not sent.
+- Remaining validation: signed-in source extraction/profile reuse, real marketplace conversation selectors, forced-termination cleanup, and native bundle-size measurement. Verification is intentionally lightweight for the hackathon, as requested; controlled tests do not prove live seller delivery.
 
 ## 12. Acceptance tests and verification
 

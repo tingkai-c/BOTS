@@ -5,6 +5,13 @@ import { marketplaceSchema } from '@/lib/schemas';
 
 export const maxDuration = 60;
 const schema = z.object({ marketplace: marketplaceSchema, action: z.enum(['open', 'save', 'cancel']) });
+export async function GET() {
+  try { const user = await userId(); if (!liveMode()) return Response.json({ connected: [], demo: true });
+    const markets = ['facebook', 'ebay', 'kijiji'] as const;
+    const statuses = await Promise.all(markets.map(async marketplace => (await connection(user, marketplace))?.profileId ? marketplace : null));
+    return Response.json({ connected: statuses.filter(Boolean) });
+  } catch (e) { return apiError(e); }
+}
 
 export async function POST(req: Request) {
   try {

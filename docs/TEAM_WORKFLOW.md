@@ -66,6 +66,18 @@ Do not run `convex deploy` from a feature branch against the shared production p
 
 ## Local work
 
+### Workspace worker
+
+The shared test Convex backend dispatches all discovery and negotiation work to **one explicitly selected preview**, using its `CONVEX_SERVER_SECRET` as bearer authentication. Set the HTTPS endpoint only after that preview is ready:
+
+```bash
+pnpm exec convex env set --deployment sensible-newt-347 WORKSPACE_WORKER_URL https://YOUR-PREVIEW.vercel.app/api/workspace/worker
+```
+
+Use a preview connected to `sensible-newt-347` with the matching test secret. Do not point this at production or configure a different worker for every branch. The minute cron awaits bounded worker calls; monitoring targets five minutes per active account. Missing `WORKSPACE_WORKER_URL` disables dispatch. To disable it explicitly, use `pnpm exec convex env remove --deployment sensible-newt-347 WORKSPACE_WORKER_URL`.
+
+When selecting a replacement immutable preview URL, update this Convex setting after the new deployment is ready. Changes to this shared setting affect all test workspaces. A successful authenticated no-work request verifies worker wiring without creating Steel sessions or messaging sellers.
+
 Use Node.js 24 and pnpm 11.20.0. Run `pnpm install` and `pnpm dev`. Without keys, the app runs its labeled demo. Request development configuration privately only when live-integration work needs it. `.env.example` documents variable names; never commit populated environment files.
 
 ## Troubleshooting previews

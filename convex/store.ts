@@ -1,6 +1,8 @@
 import { mutationGeneric, queryGeneric, paginationOptsValidator, type MutationBuilder, type QueryBuilder, type DataModelFromSchemaDefinition } from 'convex/server';
 import { searchStateSchema, summarizeWorkspace } from '../lib/schemas/workspace';
 import { authorizeServer as authorize } from './access';
+import { ownedWorkspace } from './access';
+import { internal } from './_generated/api';
 import schema from './schema';
 type DataModel=DataModelFromSchemaDefinition<typeof schema>;
 const mutation=mutationGeneric as MutationBuilder<DataModel,'public'>;
@@ -28,7 +30,9 @@ export const setMonitoringPaused=mutation({args:{id:v.string(),paused:v.boolean(
  const row=await ctx.db.query('searches').withIndex('by_key',q=>q.eq('key',a.id)).unique();
  if(!row||row.userId!==user.subject)throw new Error('Unauthorized');
  await ctx.db.patch(row._id,{workspace:{...(row.workspace??summarizeWorkspace(row.key,row.state,row._creationTime)),monitoringPaused:a.paused,updatedAt:Date.now()}});
+ if(!a.paused){for(const thread of await ctx.db.query('threads').withIndex('by_workspace',q=>q.eq('workspaceId',a.id)).collect()){const account=await ctx.db.query('accountMonitoring').withIndex('by_account',q=>q.eq('userId',user.subject).eq('marketplace',thread.marketplace).eq('profileId',thread.profileId)).unique();if(account&&(account.leaseExpiresAt??0)<=Date.now())await ctx.db.patch(account._id,{nextDueAt:Date.now()});}await ctx.scheduler.runAfter(0,internal.dispatcher.tick,{});}
 }});
+export const read=query({args:{secret:v.string(),userId:v.string(),id:v.string()},handler:async(ctx,a)=>{authorize(a.secret);return (await ownedWorkspace(ctx,a.userId,a.id)).state;}});
 export const watch=query({args:{id:v.string()},handler:async(ctx,a)=>{const user=await ctx.auth.getUserIdentity();if(!user)return null;const row=await ctx.db.query('searches').withIndex('by_key',q=>q.eq('key',a.id)).unique();return row?.userId===user.subject?row.state:null;}});
 export const connection=query({args:{secret:v.string(),userId:v.string(),marketplace:v.string()},handler:async(ctx,a)=>{authorize(a.secret);return ctx.db.query('marketplaceConnections').withIndex('by_user_market',q=>q.eq('userId',a.userId).eq('marketplace',a.marketplace)).unique();}});
 export const saveConnection=mutation({args:{secret:v.string(),userId:v.string(),marketplace:v.string(),profileId:v.string(),sessionId:v.optional(v.string())},handler:async(ctx,a)=>{authorize(a.secret);const old=await ctx.db.query('marketplaceConnections').withIndex('by_user_market',q=>q.eq('userId',a.userId).eq('marketplace',a.marketplace)).unique();const data={userId:a.userId,marketplace:a.marketplace,profileId:a.profileId,sessionId:a.sessionId};if(old)await ctx.db.patch(old._id,data);else await ctx.db.insert('marketplaceConnections',data);}});

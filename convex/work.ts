@@ -3,6 +3,8 @@ import { internalQuery, mutation, query } from './_generated/server';
 import { authorizeServer, ownedWorkspace } from './access';
 import { marketplace, workCursor, workKind, workOutcome } from './validators';
 import { z } from 'zod';
+import { internal } from './_generated/api';
+import { listingSchema } from '../lib/schemas';
 
 // Browser dispatch is wired in the discovery milestone. These jobs never send messages.
 const credentials = { secret: v.string(), userId: v.string() };
@@ -19,6 +21,7 @@ export const enqueue = mutation({
   handler: async (ctx, a) => {
     authorizeServer(a.secret);
     await ownedWorkspace(ctx, a.userId, a.workspaceId);
+    if(process.env.WORKSPACE_WORKER_URL) await ctx.scheduler.runAfter(0,internal.dispatcher.tick,{});
     if (a.kind === 'inspection') {
       if (!a.listingId) throw new Error('Inspection requires a listing.');
       const listing = await ctx.db.query('listings').withIndex('by_key', q => q.eq('key', `${a.workspaceId}:${a.listingId}`)).unique();
@@ -42,6 +45,18 @@ export const enqueue = mutation({
     });
   },
 });
+
+export const load = query({args:{secret:v.string(),id:v.id('workspaceJobs')},handler:async(ctx,a)=>{authorizeServer(a.secret);const job=await ctx.db.get(a.id);if(!job)return null;const workspace=await ownedWorkspace(ctx,job.userId,job.workspaceId);return {job,state:workspace.state};}});
+export const progress=mutation({args:{...credentials,id:v.id('workspaceJobs'),generation:v.number(),listing:v.optional(v.any()),message:v.optional(v.string()),outcome:v.optional(v.union(v.literal('running'),v.literal('complete'),v.literal('no_matches'),v.literal('partial'),v.literal('needs_sign_in'),v.literal('failed'))),status:v.optional(v.union(v.literal('searching'),v.literal('complete'),v.literal('failed'),v.literal('login_required'))),debugUrl:v.optional(v.string()),sessionId:v.optional(v.string())},handler:async(ctx,a)=>{
+ authorizeServer(a.secret);const job=await ctx.db.get(a.id);if(!job||job.userId!==a.userId||job.status!=='running'||job.generation!==a.generation||(job.leaseExpiresAt??0)<=Date.now())throw new Error('Stale work claim.');
+ const row=await ownedWorkspace(ctx,a.userId,job.workspaceId);const state={...row.state,listings:[...row.state.listings],events:[...row.state.events],runs:[...row.state.runs]};
+ if(a.listing){const l=listingSchema.parse(a.listing);if(l.searchId!==job.workspaceId||l.marketplace!==job.marketplace)throw new Error('Listing belongs to another job.');const index=state.listings.findIndex((x:{id:string})=>x.id===l.id);if(index<0)state.listings.push(l);else state.listings[index]=l;
+  const key=`${job.workspaceId}:${l.id}`;const old=await ctx.db.query('listings').withIndex('by_key',q=>q.eq('key',key)).unique();if(old)await ctx.db.patch(old._id,{data:l});else await ctx.db.insert('listings',{key,searchId:job.workspaceId,data:l});
+ }
+ if(a.status){const run={marketplace:job.marketplace,status:a.status,outcome:a.outcome??(a.status==='searching'?'running':a.status==='login_required'?'needs_sign_in':a.status),message:a.message??'Checking listings',...(a.debugUrl?{debugUrl:a.debugUrl}:{}),...(a.sessionId?{sessionId:a.sessionId}:{})};state.runs=state.runs.map((r:{marketplace:string})=>r.marketplace===job.marketplace?run:r);state.status=state.runs.some((r:{status:string})=>['queued','searching'].includes(r.status))?'searching':state.runs.every((r:{status:string})=>['failed','login_required'].includes(r.status))?'failed':'complete';}
+ if(a.message)state.events.push({id:`${job._id}:${Date.now()}:${state.events.length}`,message:a.message,marketplace:job.marketplace,time:Date.now(),kind:a.status==='failed'?'error':'action'});
+ await ctx.db.patch(row._id,{state,...(row.workspace?{workspace:{...row.workspace,listingCount:state.listings.length,status:state.status,updatedAt:Date.now()}}:{})});
+}});
 
 export const claim = mutation({
   args: { ...credentials, id: v.id('workspaceJobs') },
