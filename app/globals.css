@@ -3246,3 +3246,270 @@ body.is-resizing .agent-panel {
   .page-footer { padding: 16px 14px; margin-top: 20px; }
   .modal-content.agent-preview-modal { padding: 16px 14px; }
 }
+
+/* ── Decide button ── */
+.results-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.decide-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #284c34 0%, #3e7049 100%);
+  border: 1.5px solid #2b5237;
+  border-radius: 20px;
+  padding: 6px 16px;
+  height: 34px;
+  box-shadow: 0 0 0 0 rgba(40, 76, 52, 0.35);
+  animation: decidePulse 2.2s ease-in-out infinite;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.decide-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(40, 76, 52, 0.28);
+  animation: none;
+}
+@keyframes decidePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(40, 76, 52, 0.35); }
+  50% { box-shadow: 0 0 0 6px rgba(40, 76, 52, 0); }
+}
+
+/* ── Decision / comparison modal ── */
+.modal-content.decision-modal {
+  width: 95vw;
+  max-width: 95vw;
+  height: 95dvh;
+  max-height: 95dvh;
+  padding: 24px 24px 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-content.decision-modal .modal-heading {
+  flex-shrink: 0;
+  margin-bottom: 16px;
+}
+
+.decision-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* smooth horizontal scrolling on mobile */
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 6px; /* space for scrollbar */
+}
+
+/* Hide scrollbar visually but keep it functional */
+.decision-modal-body::-webkit-scrollbar {
+  height: 5px;
+}
+.decision-modal-body::-webkit-scrollbar-thumb {
+  background: #cdd8c7;
+  border-radius: 3px;
+}
+
+.decision-track {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  padding: 4px 2px 8px;
+  height: 100%;
+}
+
+/* ── Individual decision card ── */
+.decision-card {
+  flex: 0 0 270px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1.5px solid #dce4d6;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  scroll-snap-align: start;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.decision-card:hover {
+  border-color: #a8c4a4;
+  box-shadow: 0 6px 24px rgba(32, 52, 28, 0.10);
+}
+
+.decision-card-rank {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  background: rgba(20, 36, 20, 0.70);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.5px;
+}
+
+.decision-card-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f2f5f0;
+  padding: 0;
+  border-radius: 0;
+  cursor: pointer;
+}
+.decision-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease;
+}
+.decision-card-image:hover img { transform: scale(1.04); }
+
+.decision-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 8px;
+  overflow: hidden;
+}
+
+.decision-score {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  align-self: flex-start;
+}
+.decision-score.excellent {
+  background: #e3f4e0;
+  color: #1d5c1a;
+  border: 1px solid #b3ddb0;
+}
+.decision-score.good {
+  background: #eef3e9;
+  color: #2f5233;
+  border: 1px solid #c8d9c4;
+}
+.decision-score.fair {
+  background: #faf4e8;
+  color: #7a5c1e;
+  border: 1px solid #e8d8b4;
+}
+
+.decision-card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1c261c;
+  text-align: left;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+}
+.decision-card-title:hover { color: #284c34; }
+
+.decision-card-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.decision-price {
+  font-size: 17px;
+  font-weight: 700;
+  color: #1c261c;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.decision-condition,
+.decision-seller,
+.decision-location {
+  font-size: 11px;
+  color: #607558;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.decision-card-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid #edf1ea;
+  flex-shrink: 0;
+}
+.decision-card-footer .button { flex: 1; justify-content: center; }
+
+.decision-negotiate-btn {
+  background: linear-gradient(135deg, #284c34 0%, #3e7049 100%) !important;
+  color: #fff !important;
+  border-color: #2b5237 !important;
+}
+.decision-negotiate-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1c3c27 0%, #2e5838 100%) !important;
+}
+
+/* ── Modal footer (Continue / status) ── */
+.decision-modal-footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0 18px;
+  border-top: 1px solid #e4ebe0;
+  margin-top: 4px;
+}
+
+.decision-footer-hint {
+  font-size: 12px;
+  color: #7a8c74;
+}
+
+/* Mobile: vertical scroll, full-width cards */
+@media (max-width: 640px) {
+  .modal-content.decision-modal {
+    width: 95vw;
+    height: 95dvh;
+    padding: 18px 16px 0;
+  }
+  .decision-modal-body {
+    overflow-x: hidden;
+    overflow-y: auto;
+    scroll-snap-type: y mandatory;
+  }
+  .decision-track {
+    flex-direction: column;
+    height: auto;
+    gap: 12px;
+  }
+  .decision-card {
+    flex: 0 0 auto;
+    width: 100%;
+  }
+  .decision-card-image { aspect-ratio: 16 / 9; }
+  .decision-modal-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}

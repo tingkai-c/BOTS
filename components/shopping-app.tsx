@@ -31,10 +31,13 @@ import {
   MapPin,
   Plus,
   RefreshCw,
+  Scale,
   Search,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Star,
+  Truck,
   X,
 } from "lucide-react";
 import type {
@@ -202,6 +205,12 @@ export function ShoppingApp({
   const dragStartWidth = useRef(0);
   const workspaceRef = useRef<HTMLDivElement>(null);
 
+  // Decision gate state
+  const [decisionOpen, setDecisionOpen] = useState(false);
+  const [decisionListings, setDecisionListings] = useState<RankedListing[]>([]);
+  const roundStartCount = useRef(0);
+  const lastResultAt = useRef(0);
+
   const isMarketConnected = (m: Marketplace) =>
     m === "facebook" ? connectedMarkets.facebook || connected : connectedMarkets[m];
 
@@ -308,6 +317,37 @@ export function ShoppingApp({
     };
   }, []);
 
+  // Decision gate: fire when 10 new results arrive in this round OR 10 s elapse with no new result
+  useEffect(() => {
+    if (decisionOpen) return; // already showing
+    const ranked = rankListings(state?.listings || []);
+    const current = ranked.length;
+    if (current === 0) return;
+    // track the timestamp of the most recent listing
+    lastResultAt.current = Date.now();
+    // 10-result trigger
+    const newThisRound = current - roundStartCount.current;
+    if (newThisRound >= 10) {
+      setDecisionListings(ranked);
+      setDecisionOpen(true);
+      return;
+    }
+    // 10-second idle trigger — only while an active search is running
+    const isActive = Boolean(state && ['queued','searching','ranking'].includes(state.status));
+    if (!isActive) return;
+    const id = setInterval(() => {
+      if (Date.now() - lastResultAt.current >= 10_000 && !decisionOpen) {
+        const snap = rankListings(state?.listings || []);
+        if (snap.length > 0) {
+          setDecisionListings(snap);
+          setDecisionOpen(true);
+        }
+      }
+    }, 1_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.listings?.length, state?.status]);
+
   const restoredId = useRef<string | null>(null);
   const updateLive = useCallback((s: SearchState) => {
     setState(s);
@@ -329,8 +369,14 @@ export function ShoppingApp({
     if (event.type === "state") {
       setState(event.state);
       restoredId.current = event.state.id;
-      if (event.state.filters?.maxPrice)
-        setMaxPrice(String(event.state.filters.maxPrice));
+      if (event.state.filters) {
+        setMaxPrice(event.state.filters.maxPrice ? String(event.state.filters.maxPrice) : "");
+        setCondition(event.state.filters.condition);
+        setMarket(event.state.filters.marketplace);
+        setLocation(event.state.filters.location);
+        setRadius(event.state.filters.radius);
+        setCurrency(event.state.filters.currency ?? "USD");
+      }
       window.history.replaceState(null, "", `/search/${event.state.id}`);
       return;
     }
@@ -390,6 +436,9 @@ export function ShoppingApp({
     setActiveTab("discover");
     setSelected(null);
     setState(null);
+    setDecisionOpen(false);
+    roundStartCount.current = 0;
+    lastResultAt.current = Date.now();
     setActiveMarket(
       market === "ebay" ? "ebay" : market === "kijiji" ? "kijiji" : market === "facebook" ? "facebook" : "all",
     );
@@ -955,18 +1004,31 @@ export function ShoppingApp({
               </div>
 
               {state ? (
-                <label className="sort-control">
-                  <ArrowDownUp size={13} />
-                  <select
-                    aria-label="Sort listings"
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                  >
-                    <option value="best">Best deals first</option>
-                    <option value="price">Lowest total price</option>
-                    <option value="newest">Recently found</option>
-                  </select>
-                </label>
+                <div className="results-nav-right">
+                  {ranked.length >= 10 && (
+                    <button
+                      type="button"
+                      className="decide-btn"
+                      onClick={() => { setDecisionListings(ranked); setDecisionOpen(true); }}
+                      aria-label="Side-by-side comparison"
+                    >
+                      <Scale size={14} />
+                      Decide
+                    </button>
+                  )}
+                  <label className="sort-control">
+                    <ArrowDownUp size={13} />
+                    <select
+                      aria-label="Sort listings"
+                      value={sort}
+                      onChange={(e) => setSort(e.target.value)}
+                    >
+                      <option value="best">Best deals first</option>
+                      <option value="price">Lowest total price</option>
+                      <option value="newest">Recently found</option>
+                    </select>
+                  </label>
+                </div>
               ) : null}
             </div>
 
@@ -1532,6 +1594,128 @@ export function ShoppingApp({
           </div>
         </div>
       </Modal>
+
+      {/* Decision / Comparison Modal */}
+      <DecisionModal
+        open={decisionOpen}
+        listings={decisionListings}
+        negotiatedIds={negotiatedIds}
+        busy={busy}
+        onContinue={() => {
+          roundStartCount.current = ranked.length;
+          lastResultAt.current = Date.now();
+          setDecisionOpen(false);
+        }}
+        onClose={() => setDecisionOpen(false)}
+        onNegotiate={(l) => {
+          setDecisionOpen(false);
+          if (negotiatedIds.includes(l.id)) setWorkspaceTab('negotiations');
+          else setNegotiate(l);
+        }}
+        onSelect={(l) => {
+          setDecisionOpen(false);
+          setSelected(l);
+        }}
+      />
     </div>
+  );
+}
+
+function DecisionModal({
+  open,
+  listings,
+  negotiatedIds,
+  busy,
+  onContinue,
+  onClose,
+  onNegotiate,
+  onSelect,
+}: {
+  open: boolean;
+  listings: RankedListing[];
+  negotiatedIds: string[];
+  busy: boolean;
+  onContinue: () => void;
+  onClose: () => void;
+  onNegotiate: (l: RankedListing) => void;
+  onSelect: (l: RankedListing) => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      onOpenChange={(v) => { if (!v) onClose(); }}
+      title="Compare your shortlist"
+      description={`${listings.length} listing${listings.length !== 1 ? 's' : ''} found — scroll to compare, then negotiate or keep searching.`}
+      className="decision-modal"
+    >
+      <div className="decision-modal-body">
+        <div className="decision-track">
+          {listings.map((l, i) => (
+            <article key={l.id} className="decision-card">
+              <div className="decision-card-rank"># {i + 1}</div>
+              <button className="decision-card-image" onClick={() => onSelect(l)} aria-label={`View ${l.title}`}>
+                <img
+                  src={l.imageUrls[0] || '/product.svg'}
+                  alt={l.title}
+                  onError={(e) => { e.currentTarget.src = '/product.svg'; }}
+                />
+              </button>
+              <div className="decision-card-body">
+                <span className={`decision-score ${l.dealScore >= 85 ? 'excellent' : l.dealScore >= 75 ? 'good' : 'fair'}`}>
+                  {l.dealScore} · {l.dealScore >= 85 ? 'Excellent' : l.dealScore >= 75 ? 'Good deal' : 'Fair price'}
+                </span>
+                <button className="decision-card-title" onClick={() => onSelect(l)}>{l.title}</button>
+                <div className="decision-card-meta">
+                  <span className="decision-price">
+                    {money(l.price, l.currency)}
+                    {l.shippingCost === 0
+                      ? <><Truck size={11}/>&nbsp;Free shipping</>
+                      : l.shippingCost
+                      ? <><Truck size={11}/>&nbsp;+{money(l.shippingCost, l.currency)}</>
+                      : null}
+                  </span>
+                  {l.condition && <span className="decision-condition">{l.condition}</span>}
+                  {l.sellerRating != null && (
+                    <span className="decision-seller">
+                      <Star size={11} fill="currentColor"/>
+                      {l.sellerRating}
+                      {l.sellerReviewCount != null ? ` (${l.sellerReviewCount})` : ''}
+                    </span>
+                  )}
+                  {l.location && <span className="decision-location"><MapPin size={11}/>{l.location}</span>}
+                  <MarketplaceBadge marketplace={l.marketplace} />
+                </div>
+              </div>
+              <div className="decision-card-footer">
+                <Button
+                  size="sm"
+                  onClick={() => onNegotiate(l)}
+                  disabled={l.availability === 'sold'}
+                  className="decision-negotiate-btn"
+                >
+                  <Sparkles size={13} />
+                  {negotiatedIds.includes(l.id) ? 'View negotiation' : 'Negotiate'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => onSelect(l)}>
+                  Details <ArrowUpRight size={12} />
+                </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+      <div className="decision-modal-footer">
+        <Button onClick={onContinue} disabled={!busy} variant="outline">
+          {busy
+            ? <><Loader2 size={14} className="spin" />Continue searching</>
+            : 'Search complete'}
+        </Button>
+        <span className="decision-footer-hint">
+          {busy
+            ? 'Agents are still searching — continue to collect more results.'
+            : 'All agents have finished. Start a new search to find more.'}
+        </span>
+      </div>
+    </Modal>
   );
 }
