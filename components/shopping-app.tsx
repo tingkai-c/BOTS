@@ -17,6 +17,8 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Command,
   Compass,
   History,
@@ -48,6 +50,7 @@ import { photo } from "@/lib/demo/fixtures";
 import { AgentPanel, BrowserView } from "./agent-panel";
 import { ListingCard, MarketplaceBadge, DealScore, money } from "./listings";
 import { NegotiationPanel } from "./negotiation-panel";
+import { PlatformLogo } from "./platform-logos";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
 import { useShoppingAuth } from "./providers";
@@ -125,6 +128,8 @@ const examples = [
   },
 ];
 
+const ALL_MARKETS: Marketplace[] = ["kijiji", "ebay", "facebook"];
+
 export function ShoppingApp({
   demo,
   initialId,
@@ -170,6 +175,13 @@ export function ShoppingApp({
     ebay: false,
     kijiji: false,
   });
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+
+  const isMarketConnected = (m: Marketplace) =>
+    m === "facebook" ? connectedMarkets.facebook || connected : connectedMarkets[m];
+
+  const toAddMarkets = ALL_MARKETS.filter((m) => !isMarketConnected(m));
+  const addedMarkets = ALL_MARKETS.filter((m) => isMarketConnected(m));
   const [inspecting, setInspecting] = useState(false);
   const [inspectUrl, setInspectUrl] = useState("");
   const [inspectText, setInspectText] = useState("");
@@ -524,44 +536,88 @@ export function ShoppingApp({
 
           {/* Platform Connections Widget */}
           <div className="platform-connections-widget">
-            <button
-              type="button"
-              className="market-connect-capsule"
-              onClick={() => {
-                setConnectionMarket(connectedMarkets.ebay ? "kijiji" : "ebay");
-                setConnectionOpen(true);
-              }}
-              aria-label="Connect Kijiji and eBay"
-              title="Connect Kijiji and eBay"
-            >
-              <span className="platform-icon kijiji mini">k</span>
-              <span className="platform-icon ebay mini">e</span>
-              <Plus size={11} className="capsule-symbol" />
-            </button>
+            {toAddMarkets.length > 0 && (
+              <div
+                className="market-connect-capsule"
+                role="group"
+                aria-label="Marketplaces to add"
+              >
+                {toAddMarkets.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className="market-capsule-item"
+                    onClick={() => {
+                      setConnectionMarket(m);
+                      setConnectionOpen(true);
+                    }}
+                    aria-label={
+                      m === "facebook"
+                        ? "Connect Facebook"
+                        : `Connect ${m === "ebay" ? "eBay" : "Kijiji"}`
+                    }
+                    title={`Connect ${
+                      m === "facebook"
+                        ? "Facebook Marketplace"
+                        : m === "ebay"
+                          ? "eBay"
+                          : "Kijiji"
+                    }`}
+                  >
+                    <PlatformLogo market={m} size={18} />
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="capsule-symbol-btn"
+                  onClick={() => {
+                    setConnectionMarket(toAddMarkets[0]);
+                    setConnectionOpen(true);
+                  }}
+                  aria-label="Add marketplace"
+                  title="Add marketplace"
+                >
+                  <Plus size={12} className="capsule-symbol" />
+                </button>
+              </div>
+            )}
 
-            <button
-              type="button"
-              className={`market-connect-capsule fb-capsule ${
-                connectedMarkets.facebook || connected ? "connected" : ""
-              }`}
-              onClick={() => {
-                setConnectionMarket("facebook");
-                setConnectionOpen(true);
-              }}
-              aria-label={
-                connectedMarkets.facebook || connected
-                  ? `${demo ? "Demo · " : ""}Connected`
-                  : "Connect Facebook"
-              }
-              title="Connect Facebook Marketplace"
-            >
-              <span className="platform-icon fb mini">f</span>
-              {connectedMarkets.facebook || connected ? (
-                <Check size={11} className="capsule-symbol check" />
-              ) : (
-                <Plus size={11} className="capsule-symbol" />
-              )}
-            </button>
+            {addedMarkets.length > 0 && (
+              <div
+                className="market-connect-capsule connected"
+                role="group"
+                aria-label="Connected marketplaces"
+              >
+                {addedMarkets.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className="market-capsule-item"
+                    onClick={() => {
+                      setConnectionMarket(m);
+                      setConnectionOpen(true);
+                    }}
+                    aria-label={
+                      m === "facebook"
+                        ? `${demo ? "Demo · " : ""}Connected`
+                        : `Connected: ${m === "ebay" ? "eBay" : "Kijiji"}`
+                    }
+                    title={`Connected: ${
+                      m === "facebook"
+                        ? "Facebook Marketplace"
+                        : m === "ebay"
+                          ? "eBay"
+                          : "Kijiji"
+                    }`}
+                  >
+                    <PlatformLogo market={m} size={18} />
+                  </button>
+                ))}
+                <span className="capsule-symbol-box" aria-hidden="true">
+                  <Check size={12} className="capsule-symbol check" />
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="nav-vdivider" />
@@ -638,11 +694,7 @@ export function ShoppingApp({
               disabled={busy || (!query.trim() && !image)}
               className="search-submit-btn"
             >
-              {busy ? (
-                <Loader2 size={15} className="spin" />
-              ) : (
-                <Sparkles size={15} />
-              )}
+              {busy && <Loader2 size={15} className="spin" />}
               <span>{busy ? "Searching" : "Find"}</span>
               {!busy && <ArrowRight size={15} />}
             </Button>
@@ -781,7 +833,7 @@ export function ShoppingApp({
           </button>
         </div>
 
-        <div className={`workspace show-${mobileTab}`}>
+        <div className={`workspace show-${mobileTab} ${panelCollapsed ? "panel-collapsed" : ""}`}>
           <section className="results-panel">
             <div className="results-nav">
               <div className="tab-pill-group">
@@ -863,10 +915,7 @@ export function ShoppingApp({
             ) : !state && !busy && activeTab === "discover" ? (
               <div className="landing-results">
                 <div className="start-heading">
-                  <div>
-                    <h2>A little inspiration to get started</h2>
-                  </div>
-                  <span className="inspiration-corner-arrow">↘</span>
+                  <h2>A little inspiration to get started</h2>
                 </div>
 
                 <div className="inspiration-grid">
@@ -889,17 +938,14 @@ export function ShoppingApp({
                         </span>
                       </div>
                       <div className="inspiration-copy">
-                        <small>{e.price}</small>
-                        <h3>{e.label}</h3>
+                        <small>{e.price}</small>{" "}
+                        <h3>{e.label}</h3>{" "}
                         <p>{e.detail}</p>
                       </div>
                     </button>
                   ))}
                 </div>
 
-                <div className="landing-footnote">
-                  <em>Review your account interactions in Facebook, ebay, and Kijiji</em>
-                </div>
               </div>
             ) : (
               <div className="search-results">
@@ -1046,16 +1092,33 @@ export function ShoppingApp({
             )}
           </section>
 
+          <div className="workspace-divider">
+            <button
+              type="button"
+              className="panel-toggle-btn"
+              onClick={() => setPanelCollapsed(!panelCollapsed)}
+              aria-label={panelCollapsed ? "Expand agent preview" : "Collapse agent preview"}
+              title={panelCollapsed ? "Expand agent preview" : "Collapse agent preview"}
+            >
+              {panelCollapsed ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+            </button>
+          </div>
+
           <AgentPanel
             state={state}
             activeMarket={activeMarket}
             setActiveMarket={setActiveMarket}
             onConnect={() => setConnectionOpen(true)}
+            isCollapsed={panelCollapsed}
+            onExpand={() => setPanelCollapsed(false)}
           />
         </div>
       </main>
 
       <footer className="page-footer">
+        <p className="footer-disclaimer">
+          {"You're responsible to review your account interactions in Facebook Marketplace, ebay, and Kijiji"}
+        </p>
         <span className="footer-brand">haggleface.</span>
       </footer>
 

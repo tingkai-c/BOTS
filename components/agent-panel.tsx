@@ -7,11 +7,15 @@ import {
   Maximize2,
   Monitor,
   MousePointer2,
+  Pause,
+  Play,
   Search,
   Sparkles,
+  Square,
 } from "lucide-react";
 import type { Marketplace, SearchState } from "@/lib/schemas";
 import { Modal } from "./ui/dialog";
+import { PlatformLogo } from "./platform-logos";
 
 export function BrowserView({
   url,
@@ -42,11 +46,15 @@ export function AgentPanel({
   activeMarket,
   setActiveMarket,
   onConnect,
+  onExpand,
+  isCollapsed,
 }: {
   state: SearchState | null;
   activeMarket: Marketplace | "all";
   setActiveMarket: (m: Marketplace | "all") => void;
   onConnect: () => void;
+  onExpand?: () => void;
+  isCollapsed?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const run =
@@ -95,13 +103,6 @@ export function AgentPanel({
             {state?.demo ? "SIMULATED" : "BROWSER"}
           </span>
         </div>
-        <button
-          className="browser-expand-trigger"
-          aria-label="Expand browser"
-          onClick={() => setExpanded(true)}
-        >
-          <Maximize2 size={13} />
-        </button>
       </div>
       {run?.debugUrl ? (
         <BrowserView url={run.debugUrl} />
@@ -110,16 +111,16 @@ export function AgentPanel({
           <div className="mock-market-header">
             <div className="mock-market-brand">
               {activeMarket === "facebook" ? (
-                <span className="platform-icon fb">f</span>
+                <PlatformLogo market="facebook" size={18} />
               ) : activeMarket === "ebay" ? (
-                <span className="platform-icon ebay">e</span>
+                <PlatformLogo market="ebay" size={18} />
               ) : activeMarket === "kijiji" ? (
-                <span className="platform-icon kijiji">k</span>
+                <PlatformLogo market="kijiji" size={18} />
               ) : (
                 <div className="multi-platform-icons">
-                  <span className="platform-icon fb">f</span>
-                  <span className="platform-icon ebay">e</span>
-                  <span className="platform-icon kijiji">k</span>
+                  <PlatformLogo market="facebook" size={16} />
+                  <PlatformLogo market="ebay" size={16} />
+                  <PlatformLogo market="kijiji" size={16} />
                 </div>
               )}
             </div>
@@ -196,12 +197,23 @@ export function AgentPanel({
   );
 
   return (
-    <aside className="agent-panel">
-      <div className="agent-header">
+    <aside
+      className="agent-panel"
+      onClick={isCollapsed ? onExpand : undefined}
+      title={isCollapsed ? "Click to expand agent preview" : undefined}
+    >
+      <div className="agent-panel-inner">
+        <div className="agent-header">
         <div className="agent-header-left">
           <span className={`status-pill ${browsing ? "active" : ""}`}>
-            <span className="status-dot" />
-            {browsing ? "Working" : "Ready"}
+            {browsing ? (
+              <Play size={8} fill="currentColor" className="status-square-icon" />
+            ) : run?.status === "login_required" ? (
+              <Pause size={8} fill="currentColor" className="status-square-icon" />
+            ) : (
+              <Square size={7} fill="currentColor" className="status-square-icon" />
+            )}
+            {browsing ? "Working" : run?.status === "login_required" ? "Paused" : "Ready"}
           </span>
           <h2 className="agent-header-title">Your haggler agent preview</h2>
         </div>
@@ -228,7 +240,8 @@ export function AgentPanel({
           onClick={() => setActiveMarket("facebook")}
           aria-label="Facebook Marketplace"
         >
-          <span className="platform-icon fb">f</span>
+          <PlatformLogo market="facebook" size={17} />
+          <span className="market-tab-label">Facebook</span>
         </button>
         <button
           type="button"
@@ -236,7 +249,8 @@ export function AgentPanel({
           onClick={() => setActiveMarket("ebay")}
           aria-label="eBay"
         >
-          <span className="platform-icon ebay">e</span>
+          <PlatformLogo market="ebay" size={17} />
+          <span className="market-tab-label">eBay</span>
         </button>
         <button
           type="button"
@@ -244,7 +258,8 @@ export function AgentPanel({
           onClick={() => setActiveMarket("kijiji")}
           aria-label="Kijiji"
         >
-          <span className="platform-icon kijiji">k</span>
+          <PlatformLogo market="kijiji" size={17} />
+          <span className="market-tab-label">Kijiji</span>
         </button>
       </div>
 
@@ -305,6 +320,7 @@ export function AgentPanel({
             </div>
           </div>
         )}
+      </div>
       </div>
 
       <Modal
