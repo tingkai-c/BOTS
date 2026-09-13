@@ -3295,6 +3295,16 @@ body.is-resizing .agent-panel {
 .modal-content.decision-modal .modal-heading {
   flex-shrink: 0;
   margin-bottom: 14px;
+  text-align: center;
+  position: relative;
+}
+.modal-content.decision-modal .modal-heading > div {
+  width: 100%;
+}
+.modal-content.decision-modal .modal-heading .button-icon {
+  position: absolute;
+  right: 0;
+  top: 0;
 }
 
 .decision-modal-body {
@@ -3321,15 +3331,17 @@ body.is-resizing .agent-panel {
 
 .decision-table-wrap {
   min-width: 100%;
-  display: inline-block;
-  vertical-align: top;
+  width: max-content;
+  display: flex;
+  justify-content: center;
+  justify-content: safe center;
 }
 
 .decision-table {
   border-collapse: separate;
   border-spacing: 0;
-  width: max-content;
   table-layout: fixed;
+  margin: 0 auto;
 }
 
 /* ── Aspect column headers (sticky left) ── */
@@ -3436,6 +3448,7 @@ body.is-resizing .agent-panel {
   font-size: 12px;
   color: #1f2a1e;
   box-sizing: border-box;
+  text-align: center;
 }
 
 .decision-row-aspect:hover .decision-col-td {
@@ -3447,7 +3460,8 @@ body.is-resizing .agent-panel {
   font-size: 12px;
   font-weight: 600;
   color: #182417;
-  text-align: left;
+  text-align: center;
+  margin: 0 auto;
   line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -3467,6 +3481,8 @@ body.is-resizing .agent-panel {
 .decision-cell-price {
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 1px;
 }
 .decision-price-val {
@@ -3490,6 +3506,7 @@ body.is-resizing .agent-panel {
 .decision-cell-region {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   font-size: 11.5px;
   color: #485c45;
@@ -3507,6 +3524,7 @@ body.is-resizing .agent-panel {
 /* Aspect: Deal Score */
 .decision-score-pill {
   display: inline-block;
+  margin: 0 auto;
   font-size: 10px;
   font-weight: 700;
   padding: 2px 7px;
@@ -3532,6 +3550,7 @@ body.is-resizing .agent-panel {
 /* Aspect: Condition */
 .decision-condition-tag {
   display: inline-block;
+  margin: 0 auto;
   font-size: 11px;
   color: #41563f;
   background: #f0f4ee;
@@ -3542,10 +3561,20 @@ body.is-resizing .agent-panel {
   white-space: nowrap;
 }
 
+/* Aspect: Platform */
+.decision-row-platform .decision-col-td {
+  text-align: center;
+}
+.decision-row-platform .decision-col-td > * {
+  display: inline-flex;
+  margin: 0 auto;
+}
+
 /* Aspect: Seller */
 .decision-seller-val {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   font-size: 11px;
   color: #586b55;
@@ -3561,6 +3590,7 @@ body.is-resizing .agent-panel {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
 }
 .decision-seller-none {
   color: #a4b39f;
@@ -3571,7 +3601,7 @@ body.is-resizing .agent-panel {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  align-items: stretch;
+  align-items: center;
   padding: 8px 10px;
 }
 
@@ -3615,6 +3645,7 @@ body.is-resizing .agent-panel {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 16px;
   padding: 12px 0 16px;
   border-top: 1px solid #e4ebe0;
