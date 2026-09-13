@@ -3282,11 +3282,11 @@ body.is-resizing .agent-panel {
 
 /* ── Decision / comparison modal ── */
 .modal-content.decision-modal {
-  width: 95vw;
+  width: fit-content;
   max-width: 95vw;
-  height: 95dvh;
+  height: fit-content;
   max-height: 95dvh;
-  padding: 22px 22px 0;
+  padding: 18px 20px 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3294,9 +3294,10 @@ body.is-resizing .agent-panel {
 
 .modal-content.decision-modal .modal-heading {
   flex-shrink: 0;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   text-align: center;
   position: relative;
+  padding: 0 36px;
 }
 .modal-content.decision-modal .modal-heading > div {
   width: 100%;
@@ -3308,7 +3309,8 @@ body.is-resizing .agent-panel {
 }
 
 .decision-modal-body {
-  flex: 1;
+  flex: 0 1 auto;
+  max-height: calc(95dvh - 125px);
   min-height: 0;
   overflow-x: auto;
   overflow-y: auto;
@@ -3349,13 +3351,13 @@ body.is-resizing .agent-panel {
   position: sticky;
   left: 0;
   z-index: 10;
-  width: 110px;
-  min-width: 110px;
-  max-width: 110px;
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
   background: #f2f6ee;
   border-right: 2px solid #d2ded0;
   border-bottom: 1px solid #e1ebe0;
-  padding: 8px 12px;
+  padding: 7px 10px;
   text-align: left;
   vertical-align: middle;
   box-shadow: 2px 0 6px rgba(28, 48, 24, 0.04);
@@ -3366,7 +3368,7 @@ body.is-resizing .agent-panel {
   z-index: 25;
   background: #e8efe4;
   vertical-align: bottom;
-  padding-bottom: 12px;
+  padding-bottom: 10px;
 }
 
 .aspect-title {
@@ -3379,13 +3381,13 @@ body.is-resizing .agent-panel {
 
 /* ── Top column headers (Photo & rank) ── */
 .decision-col-th {
-  width: 195px;
-  min-width: 195px;
-  max-width: 195px;
+  width: 185px;
+  min-width: 185px;
+  max-width: 185px;
   background: #fff;
   border-right: 1px solid #e3eae0;
   border-bottom: 2px solid #d2ded0;
-  padding: 10px 10px 8px;
+  padding: 8px 8px 6px;
   vertical-align: top;
   position: sticky;
   top: 0;
@@ -3437,13 +3439,13 @@ body.is-resizing .agent-panel {
 
 /* ── Aspect rows & cells ── */
 .decision-col-td {
-  width: 195px;
-  min-width: 195px;
-  max-width: 195px;
+  width: 185px;
+  min-width: 185px;
+  max-width: 185px;
   background: #fff;
   border-right: 1px solid #e6ece2;
   border-bottom: 1px solid #edf2ea;
-  padding: 8px 10px;
+  padding: 7px 8px;
   vertical-align: middle;
   font-size: 12px;
   color: #1f2a1e;
@@ -3660,9 +3662,11 @@ body.is-resizing .agent-panel {
 /* Mobile: responsive aspect table */
 @media (max-width: 640px) {
   .modal-content.decision-modal {
-    width: 96vw;
-    height: 94dvh;
-    padding: 16px 14px 0;
+    width: 95vw;
+    max-width: 95vw;
+    height: fit-content;
+    max-height: 95dvh;
+    padding: 14px 12px 0;
   }
   .decision-aspect-th {
     width: 85px;
