@@ -8,6 +8,7 @@ export function Modal({
   description,
   children,
   className,
+  headerActions,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -15,6 +16,7 @@ export function Modal({
   description?: string;
   children: React.ReactNode;
   className?: string;
+  headerActions?: React.ReactNode;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -28,12 +30,15 @@ export function Modal({
                 {description || "Review details and choose your next step."}
               </Dialog.Description>
             </div>
-            <Dialog.Close
-              className="button button-icon button-ghost"
-              aria-label="Close"
-            >
-              <X size={19} />
-            </Dialog.Close>
+            <div className="modal-heading-actions">
+              {headerActions}
+              <Dialog.Close
+                className="button button-icon button-ghost"
+                aria-label="Close"
+              >
+                <X size={19} />
+              </Dialog.Close>
+            </div>
           </div>
           {children}
         </Dialog.Content>
