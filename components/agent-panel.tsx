@@ -71,7 +71,9 @@ export function AgentPanel({
           <LockKeyhole size={10} />
           {activeMarket === "facebook"
             ? "facebook.com/marketplace"
-            : "ebay.com/sch"}
+            : activeMarket === "ebay"
+              ? "ebay.com/sch"
+              : "kijiji.ca/b-search"}
           <span>{state?.demo ? "SIMULATED" : "BROWSER"}</span>
         </div>
         <button aria-label="Expand browser" onClick={() => setExpanded(true)}>
@@ -88,13 +90,17 @@ export function AgentPanel({
                 <>
                   <b className="fb-mark">f</b> Marketplace
                 </>
-              ) : (
+              ) : activeMarket === "ebay" ? (
                 <>
                   <span className="ebay-logo">
                     e<span>b</span>
                     <i>a</i>
                     <em>y</em>
                   </span>
+                </>
+              ) : (
+                <>
+                  <b className="kijiji-mark">k</b> Kijiji
                 </>
               )}
             </strong>
@@ -185,7 +191,7 @@ export function AgentPanel({
         </span>
       </div>
       <div className="agent-tabs">
-        {(["facebook", "ebay"] as const).map((m) => (
+        {(["facebook", "ebay", "kijiji"] as const).map((m) => (
           <button
             key={m}
             className={activeMarket === m ? "active" : ""}
@@ -215,7 +221,7 @@ export function AgentPanel({
               ? "Discovering listings in a real browser"
               : state?.demo
                 ? "Sample sessions. Real shopping workflow."
-                : "Two marketplaces. One smarter shortlist."}
+                : "Three marketplaces. One smarter shortlist."}
           </p>
         </div>
       </div>

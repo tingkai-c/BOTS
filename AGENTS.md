@@ -2,7 +2,7 @@
 
 ## Start here
 
-Haggleface is a four-person hackathon project: AI-assisted secondhand shopping across Facebook Marketplace and eBay. Read `README.md` for setup and `docs/TEAM_WORKFLOW.md` for the shared deployment workflow.
+Haggleface is a four-person hackathon project: AI-assisted secondhand shopping across Facebook Marketplace, eBay, and Kijiji. Read `README.md` for setup and `docs/TEAM_WORKFLOW.md` for the shared deployment workflow.
 
 - One Next.js App Router / TypeScript codebase. Use Node.js 24 and the pnpm version in `package.json`.
 - Keep changes focused on the requested task. Check `git status` before editing; preserve other people's changes.
@@ -29,7 +29,7 @@ Haggleface is a four-person hackathon project: AI-assisted secondhand shopping a
 | `components/providers.tsx`, `proxy.ts` | Clerk UI context, Convex provider, route protection |
 | `app/api/` | Authenticated and validated HTTP entry points |
 | `lib/agents/orchestrator.ts` | Bounded concurrent marketplace runs and status events |
-| `lib/marketplaces/{facebook,ebay}/` | Independent search, extraction, messaging adapters |
+| `lib/marketplaces/{facebook,ebay,kijiji}/` | Independent search, extraction, messaging adapters |
 | `lib/steel/` | Session creation, CDP connection, live views, cleanup |
 | `lib/ai/` | Anthropic provider and structured product identification |
 | `lib/schemas/`, `lib/scoring/` | Shared contracts, ranking, deduplication |

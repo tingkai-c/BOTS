@@ -283,7 +283,9 @@ export function ShoppingApp({
     setSavedOnly(false);
     setSelected(null);
     setState(null);
-    setActiveMarket(market === "ebay" ? "ebay" : "facebook");
+    setActiveMarket(
+      market === "ebay" ? "ebay" : market === "kijiji" ? "kijiji" : "facebook",
+    );
     abort.current = new AbortController();
     try {
       await readStream<StreamEvent>(
@@ -546,6 +548,7 @@ export function ShoppingApp({
                 <option value="all">All marketplaces</option>
                 <option value="facebook">Facebook</option>
                 <option value="ebay">eBay</option>
+                <option value="kijiji">Kijiji</option>
               </select>
             </label>
             <label className="compact-filter">
@@ -602,9 +605,9 @@ export function ShoppingApp({
                 </select>
               </label>
               <p>
-                Used to find eBay listings near you. Facebook Marketplace
-                uses your connected account’s location instead — set your
-                city in its browser for accurate local results.
+                Used to find eBay and Kijiji listings near you. Facebook
+                Marketplace uses your connected account’s location instead —
+                set your city in its browser for accurate local results.
               </p>
               <Button size="sm" onClick={() => setFilters(false)}>
                 Done
@@ -751,8 +754,9 @@ export function ShoppingApp({
                   <div className="stacked-dots">
                     <span>f</span>
                     <span>e</span>
+                    <span>k</span>
                   </div>
-                  <p>Facebook Marketplace & eBay.</p>
+                  <p>Facebook Marketplace, eBay & Kijiji.</p>
                   <span className="recycle-icon">↺</span>
                 </div>
               </div>
@@ -773,7 +777,7 @@ export function ShoppingApp({
                         {state.identification.attributes
                           .filter((a) => !a.includes("Demo"))
                           .slice(0, 2)
-                          .join(" · ") || "Searching both marketplaces"}
+                          .join(" · ") || "Searching your marketplaces"}
                       </p>
                     </div>
                     {state.identification.confidence < 0.8 && (
@@ -1010,7 +1014,7 @@ export function ShoppingApp({
       >
         <div className="connection-panel">
           <div className="tone-options">
-            {(["facebook", "ebay"] as const).map((m) => (
+            {(["facebook", "ebay", "kijiji"] as const).map((m) => (
               <button
                 key={m}
                 disabled={!!connectionUrl || connectionBusy}

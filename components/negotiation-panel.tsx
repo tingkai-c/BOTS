@@ -74,7 +74,7 @@ export function NegotiationPanel({ listing }: { listing: RankedListing }) {
     </div> : status === 'sending' ? <div className="sending-view" aria-live="polite">
       <div className="sending-status"><Loader2 className="spin" size={19} /><div><strong>{stage}</strong><p>Sending only the exact message you approved.</p></div></div>
       {listing.demo ? <div className="demo-chat">
-        <div className="demo-chat-address"><LockKeyhole size={11} />{listing.marketplace === 'facebook' ? 'facebook.com/messages' : 'ebay.com/messages'}<span>SIMULATED</span></div>
+        <div className="demo-chat-address"><LockKeyhole size={11} />{listing.marketplace === 'facebook' ? 'facebook.com/messages' : listing.marketplace === 'ebay' ? 'ebay.com/messages' : 'kijiji.ca/messages'}<span>SIMULATED</span></div>
         <div className="demo-chat-seller"><span className="avatar">{listing.sellerName?.[0] || 'S'}</span><div><strong>{listing.sellerName}</strong><small>Seller conversation</small></div></div>
         <div className="demo-chat-content">{stage.includes('Entering') ? <blockquote>{message}<CheckCheck size={13} /></blockquote> : <p>Opening conversation…</p>}</div>
       </div> : url ? <BrowserView url={url} /> : <p className="field-hint">Connecting your secure marketplace browser…</p>}
